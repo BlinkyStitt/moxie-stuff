@@ -1,0 +1,11 @@
+query FarcasterUserClaimTransactionDetails($fid: Int!, $transactionId: String) {
+  FarcasterUserClaimTransactionDetails(
+    input: { fid: $fid, transactionId: $transactionId }
+  ) {
+    transactionId
+    transactionStatus
+    transactionAmount
+    transactionAmountInWei
+    rewardsLastEarnedTimestamp
+  }
+}

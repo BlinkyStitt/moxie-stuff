@@ -1,0 +1,17 @@
+[package]
+name = "moxie-stuff"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.86"
+dotenvy = "0.15.7"
+envy = "0.4.2"
+graphql_client = { version = "0.14.0", features = ["reqwest-rustls"] }
+serde = { version = "1.0.208", features = ["derive"] }
+tokio = { version = "1.39.3", features = ["full"] }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
+
+# TODO: this must match the version in graphql_client. seems like it should re-export
+reqwest = "0.11.27"

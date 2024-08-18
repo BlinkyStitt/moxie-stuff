@@ -1,0 +1,28 @@
+type Mutation {
+  FarcasterUserClaimMoxie(
+    input: FarcasterUserClaimMoxieInput!
+  ): FarcasterUserClaimMoxiePayload
+}
+
+input FarcasterUserClaimMoxieInput {
+  fid: Int!
+  preferredConnectedWallet: String!
+}
+
+type FarcasterUserClaimMoxiePayload {
+  fid: Int
+  availableClaimAmount: Float
+  minimumClaimableAmountInWei: String
+  availableClaimAmountInWei: String
+  claimedAmount: Float
+  claimedAmountInWei: String
+  processingAmount: Float
+  processingAmountInWei: String
+  tokenAddress: String
+  chainId: Int
+  transactionId: ID
+  transactionStatus: String
+  transactionAmount: Float
+  transactionAmountInWei: String
+  rewardsLastEarnedTimestamp: Int
+}

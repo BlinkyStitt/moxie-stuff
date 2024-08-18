@@ -1,0 +1,24 @@
+input FarcasterUserClaimTransactionDetailsInput {
+  fid: Int!
+  transactionId: String
+}
+
+type FarcasterUserClaimTransactionDetails {
+  transactionId: ID!
+  transactionStatus: TransactionStatus!
+  transactionAmount: Float!
+  transactionAmountInWei: String!
+  rewardsLastEarnedTimestamp: String!
+}
+
+enum TransactionStatus {
+  SUCCESS
+  FAILURE
+  PENDING
+}
+
+type Query {
+  FarcasterUserClaimTransactionDetails(
+    input: FarcasterUserClaimTransactionDetailsInput!
+  ): FarcasterUserClaimTransactionDetails
+}

@@ -1,0 +1,24 @@
+mutation FarcasterUserClaimMoxie(
+  $fid: Int!
+  $preferredConnectedWallet: String!
+) {
+  FarcasterUserClaimMoxie(
+    input: { fid: $fid, preferredConnectedWallet: $preferredConnectedWallet }
+  ) {
+    fid
+    availableClaimAmount
+    minimumClaimableAmountInWei
+    availableClaimAmountInWei
+    claimedAmount
+    claimedAmountInWei
+    processingAmount
+    processingAmountInWei
+    tokenAddress
+    chainId
+    transactionId
+    transactionStatus
+    transactionAmount
+    transactionAmountInWei
+    rewardsLastEarnedTimestamp
+  }
+}
