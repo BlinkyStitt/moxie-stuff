@@ -44,7 +44,7 @@ async fn main() -> anyhow::Result<()> {
 
     let claim_result = post_graphql::<FarcasterUserClaimMoxie, _>(
         &airstack_client,
-        &"https://claims.airstack.xyz/moxie".to_string(),
+        "https://claims.airstack.xyz/moxie",
         claim_variables,
     )
     .await?;
