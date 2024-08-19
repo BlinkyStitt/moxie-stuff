@@ -1,21 +1,18 @@
-input FarcasterUserClaimTransactionDetailsInput {
+type Query {
+  FarcasterUserClaimTransactionDetails(
+    input: FarcasterUserClaimTransactionInput!
+  ): FarcasterUserClaimTransactionDetails!
+}
+
+input FarcasterUserClaimTransactionInput {
   fid: Int!
   transactionId: String
 }
 
 type FarcasterUserClaimTransactionDetails {
-  fid: ID!
-  availableClaimAmount: Float!
-  minimumClaimableAmountInWei: String!
-  availableClaimAmountInWei: String!
-  claimedAmount: Float!
-  claimedAmountInWei: String!
-  processingAmount: Float!
-  processingAmountInWei: String!
-}
-
-type Query {
-  FarcasterUserClaimTransactionDetails(
-    input: FarcasterUserClaimTransactionDetailsInput!
-  ): FarcasterUserClaimTransactionDetails
+  transactionId: String
+  transactionStatus: String
+  transactionAmount: Float
+  transactionAmountInWei: String
+  rewardsLastEarnedTimestamp: String
 }
