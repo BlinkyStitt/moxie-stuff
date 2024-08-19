@@ -1,0 +1,29 @@
+query PortfolioTokens(
+  $walletAddresses: [ID!]!
+  $limit: Int! = 1000
+  $skip: Int = 0
+) {
+  users(first: $limit, skip: $skip, where: { id_in: $walletAddresses }) {
+    portfolio(
+      orderBy: protocolTokenInvested
+      orderDirection: desc
+      where: { balance_gt: 0 }
+    ) {
+      id
+      user {
+        address: id
+      }
+      subjectToken {
+        id
+        symbol
+        totalSupply
+        tlv: reserve
+        uniqueHolders
+        currentPriceInMoxie
+        volume: lifetimeVolume
+      }
+      noOfTokens: balance
+      totalLocked: protocolTokenInvested
+    }
+  }
+}
