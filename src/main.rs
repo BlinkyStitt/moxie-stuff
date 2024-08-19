@@ -2,7 +2,7 @@ use anyhow::Context;
 use graphql_client::reqwest::post_graphql;
 use moxie_stuff::{
     check_claim_transaction_status, check_user_everyday_rewards_amount, claim_everyday_rewards,
-    https_client, portfolio_tokens,
+    https_client, portfolio_tokens, AIRSTACK_CLAIMS_URL, AIRSTACK_PROTOCOL_SUBGRAPH_URL,
 };
 use reqwest::header::HeaderMap;
 use tracing::info;
@@ -35,23 +35,26 @@ async fn main() -> anyhow::Result<()> {
         "x-airstack-claims",
         config.airstack_api_key.parse().unwrap(),
     );
-    let airstack_claims_url = "https://claims.airstack.xyz/moxie";
-    let airstack_protocol_subsgraph_url = "https://airstack.xyz/api/protocol-subgraph";
 
     let airstack_client = https_client(airstack_claims_headers)?;
 
-    // TODO: check if the user has Moxie available to claim
+    // check if the user has Moxie available to claim.
+    // TODO: something is wrong cuz this response is just empty.
     let check_result = post_graphql::<check_user_everyday_rewards_amount::Query, _>(
         &airstack_client,
-        airstack_claims_url,
+        AIRSTACK_CLAIMS_URL,
         check_user_everyday_rewards_amount::Variables {
             fid: config.farcaster_id,
         },
     )
-    .await?
-    .data
-    .context("no data in claim result")?
-    .farcaster_user_claim_transaction_details;
+    .await?;
+
+    info!("check_result: {:#?}", check_result);
+
+    let check_result = check_result
+        .data
+        .context("no data in claim result")?
+        .farcaster_user_claim_transaction_details;
 
     if check_result.available_claim_amount_in_wei == "0" {
         info!("No Moxie available to claim");
@@ -62,7 +65,7 @@ async fn main() -> anyhow::Result<()> {
 
     let balances = post_graphql::<portfolio_tokens::Query, _>(
         &airstack_client,
-        airstack_protocol_subsgraph_url,
+        AIRSTACK_PROTOCOL_SUBGRAPH_URL,
         portfolio_tokens::Variables {
             limit: 1000,
             wallet_addresses: vec![config.preferred_connected_wallet.clone()],
@@ -74,21 +77,23 @@ async fn main() -> anyhow::Result<()> {
     .context("no data")?
     .users;
 
-    let claim_result = post_graphql::<claim_everyday_rewards::Query, _>(
-        &airstack_client,
-        airstack_claims_url,
-        claim_everyday_rewards::Variables {
-            fid: config.farcaster_id,
-            preferred_connected_wallet: config.preferred_connected_wallet,
-        },
-    )
-    .await?
-    .data
-    .context("no data in claim result")?
-    .farcaster_user_claim_moxie
-    .context("no inner data in claim result")?;
+    info!("Balances: {:#?}", balances);
 
-    let claim_transaction_id = claim_result.transaction_id.unwrap();
+    // let claim_result = post_graphql::<claim_everyday_rewards::Query, _>(
+    //     &airstack_client,
+    //     AIRSTACK_CLAIMS_URL,
+    //     claim_everyday_rewards::Variables {
+    //         fid: config.farcaster_id,
+    //         preferred_connected_wallet: config.preferred_connected_wallet,
+    //     },
+    // )
+    // .await?
+    // .data
+    // .context("no data in claim result")?
+    // .farcaster_user_claim_moxie
+    // .context("no inner data in claim result")?;
+
+    // let claim_transaction_id = claim_result.transaction_id.unwrap();
 
     // TODO: poll the transaction status until it is successful
 

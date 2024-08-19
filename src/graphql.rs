@@ -1,6 +1,9 @@
 //! These queries are simply copied out of the official docs. I could clean them up some so that they don't have overlapping names, but I like this mod pattern.
 use graphql_client::GraphQLQuery;
 
+pub const AIRSTACK_CLAIMS_URL: &str = "https://claims.airstack.xyz/moxie";
+pub const AIRSTACK_PROTOCOL_SUBGRAPH_URL: &str = "https://airstack.xyz/api/protocol-subgraph";
+
 /// From <https://developer.moxie.xyz/use-cases/everyday-rewards/check-users-everyday-rewards-amount>.
 pub mod check_claim_transaction_status {
     use super::*;
@@ -27,7 +30,8 @@ pub mod claim_everyday_rewards {
     #[derive(GraphQLQuery)]
     #[graphql(
         schema_path = "graphql/airstack-claims/claim_everyday_rewards/schema.graphql",
-        query_path = "graphql/airstack-claims/claim_everyday_rewards/query.graphql"
+        query_path = "graphql/airstack-claims/claim_everyday_rewards/query.graphql",
+        response_derives = "Debug"
     )]
     pub struct FarcasterUserClaimMoxie;
 
@@ -46,7 +50,8 @@ pub mod check_user_everyday_rewards_amount {
     #[derive(GraphQLQuery)]
     #[graphql(
         schema_path = "graphql/airstack-claims/check_user_everyday_rewards_amount/schema.graphql",
-        query_path = "graphql/airstack-claims/check_user_everyday_rewards_amount/query.graphql"
+        query_path = "graphql/airstack-claims/check_user_everyday_rewards_amount/query.graphql",
+        response_derives = "Debug"
     )]
     pub struct FarcasterUserClaimTransactionDetails;
 
@@ -69,7 +74,8 @@ pub mod portfolio_tokens {
     #[derive(GraphQLQuery)]
     #[graphql(
         schema_path = "graphql/airstack-protocol-subgraph/portfolio_tokens/schema.json",
-        query_path = "graphql/airstack-protocol-subgraph/portfolio_tokens/query.graphql"
+        query_path = "graphql/airstack-protocol-subgraph/portfolio_tokens/query.graphql",
+        response_derives = "Debug"
     )]
     pub struct PortfolioTokens;
 
