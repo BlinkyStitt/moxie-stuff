@@ -1,7 +1,9 @@
+mod frames;
 mod graphql;
 
 use std::time::Duration;
 
+pub use frames::*;
 pub use graphql::*;
 use reqwest::header::{HeaderMap, HeaderValue};
 

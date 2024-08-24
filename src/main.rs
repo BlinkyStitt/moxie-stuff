@@ -1,8 +1,8 @@
 use anyhow::Context;
 use moxie_stuff::{
     airstack_claims_client, airstack_connected_addresses, check_claim_transaction_status,
-    check_user_everyday_rewards_amount, claim_everyday_rewards, get_nota_stats, https_client,
-    portfolio_tokens,
+    check_user_everyday_rewards_amount, claim_everyday_rewards, claim_everyday_rewards_with_neynar,
+    get_nota_stats, https_client, portfolio_tokens,
 };
 use tracing::{error, info};
 
@@ -103,11 +103,15 @@ async fn main() -> anyhow::Result<()> {
     } else {
         error!("API key is not allowed. Fill out <https://forms.gle/th7hKumcxz3X5txZ6> and then check your email. It might take a few days to get approved.");
 
-        // TODO: share a link to the form
-
         // TODO: share a link to a claim frame so they can claim themselves
 
         // TODO: use Neynar API to click the button in the frame so that you don't need to be on their allow list
+        claim_everyday_rewards_with_neynar(
+            &https_client,
+            &config.farcaster_id.to_string(),
+            &config.airstack_api_key,
+        )
+        .await?;
     }
 
     // TODO: buy fan tokens with the loose moxie (subtract a configurable "slush fund" amount to leave some tokens for the user to spend manually)
