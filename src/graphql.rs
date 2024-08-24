@@ -1,4 +1,7 @@
 //! These queries are simply copied out of the official docs. I could clean them up some so that they don't have overlapping names, but I like this mod pattern.
+//!
+//! TODO: I feel like this should probably be a macro that calls their macros
+use graphql_client::reqwest::post_graphql;
 use graphql_client::GraphQLQuery;
 
 pub const AIRSTACK_CLAIMS_URL: &str = "https://claims.airstack.xyz/moxie";
@@ -24,6 +27,17 @@ pub mod check_claim_transaction_status {
 
     /// prettier name for farcaster_user_claim_transaction_details::Variables.
     pub type Variables = farcaster_user_claim_transaction_details::Variables;
+
+    /// shorter name for the graphql response type.
+    pub type Response =
+        graphql_client::Response<farcaster_user_claim_transaction_details::ResponseData>;
+
+    pub async fn send_request(
+        client: &reqwest::Client,
+        variables: Variables,
+    ) -> reqwest::Result<Response> {
+        post_graphql::<Query, _>(client, URL, variables).await
+    }
 }
 
 /// From <https://developer.moxie.xyz/use-cases/everyday-rewards/claim-everyday-rewards>.
@@ -45,6 +59,16 @@ pub mod claim_everyday_rewards {
 
     /// prettier name for farcaster_user_claim_moxie::Variables.
     pub type Variables = farcaster_user_claim_moxie::Variables;
+
+    /// shorter name for the graphql response type.
+    pub type Response = graphql_client::Response<farcaster_user_claim_moxie::ResponseData>;
+
+    pub async fn send_request(
+        client: &reqwest::Client,
+        variables: Variables,
+    ) -> reqwest::Result<Response> {
+        post_graphql::<Query, _>(client, URL, variables).await
+    }
 }
 
 /// From <https://developer.moxie.xyz/use-cases/everyday-rewards/check-users-everyday-rewards-amount>.
@@ -67,6 +91,17 @@ pub mod check_user_everyday_rewards_amount {
 
     /// prettier name for farcaster_user_claim_transaction_details::Variables.
     pub type Variables = farcaster_user_claim_transaction_details::Variables;
+
+    /// shorter name for the graphql response type.
+    pub type Response =
+        graphql_client::Response<farcaster_user_claim_transaction_details::ResponseData>;
+
+    pub async fn send_request(
+        client: &reqwest::Client,
+        variables: Variables,
+    ) -> reqwest::Result<Response> {
+        post_graphql::<Query, _>(client, URL, variables).await
+    }
 }
 
 /// From <https://airstack.xyz/my-assets>.
@@ -88,6 +123,16 @@ pub mod get_nota_stats {
 
     /// prettier name for get_nota_stats::Variables.
     pub type Variables = get_nota_stats::Variables;
+
+    /// shorter name for the graphql response type.
+    pub type Response = graphql_client::Response<get_nota_stats::ResponseData>;
+
+    pub async fn send_request(
+        client: &reqwest::Client,
+        variables: Variables,
+    ) -> reqwest::Result<Response> {
+        post_graphql::<Query, _>(client, URL, variables).await
+    }
 }
 
 /// From <https://airstack.xyz/my-assets>.
@@ -114,4 +159,14 @@ pub mod portfolio_tokens {
 
     /// prettier name for portfolio_tokens::Variables.
     pub type Variables = portfolio_tokens::Variables;
+
+    /// shorter name for the graphql response type.
+    pub type Response = graphql_client::Response<portfolio_tokens::ResponseData>;
+
+    pub async fn send_request(
+        client: &reqwest::Client,
+        variables: Variables,
+    ) -> reqwest::Result<Response> {
+        post_graphql::<Query, _>(client, URL, variables).await
+    }
 }
