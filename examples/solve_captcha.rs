@@ -13,14 +13,6 @@ fn solve_captcha(image_path: &str) -> anyhow::Result<i64> {
     let width = 735;
     let height = 142;
 
-    let config = viuer::Config {
-        ..Default::default()
-    };
-
-    if let Err(e) = viuer::print_from_file(image_path, &config) {
-        println!("Failed to display image: {}", e);
-    }
-
     let mut tess = Tesseract::new(None, Some("eng"))?;
     tess = tess.set_image(image_path)?;
     tess = tess.set_variable("tessedit_char_whitelist", "Whatis0123456789+-*/? ")?;
@@ -46,6 +38,14 @@ fn solve_captcha(image_path: &str) -> anyhow::Result<i64> {
 
 fn main() {
     let captcha_image = "30_plus_5.jpg";
+
+    let config = viuer::Config {
+        ..Default::default()
+    };
+
+    if let Err(e) = viuer::print_from_file(captcha_image, &config) {
+        println!("Failed to display image: {}", e);
+    }
 
     match solve_captcha(captcha_image) {
         Ok(solution) => println!("CAPTCHA solution: {}", solution),
