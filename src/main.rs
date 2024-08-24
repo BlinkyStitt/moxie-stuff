@@ -1,8 +1,9 @@
 use anyhow::Context;
 use graphql_client::reqwest::post_graphql;
 use moxie_stuff::{
-    check_claim_transaction_status, check_user_everyday_rewards_amount, claim_everyday_rewards,
-    https_client, portfolio_tokens, AIRSTACK_CLAIMS_URL, AIRSTACK_PROTOCOL_SUBGRAPH_URL,
+    airstack_claims_client, airstack_connected_addresses, check_claim_transaction_status,
+    check_user_everyday_rewards_amount, claim_everyday_rewards, get_nota_stats, https_client,
+    portfolio_tokens, AIRSTACK_CLAIMS_URL, AIRSTACK_PROTOCOL_SUBGRAPH_URL,
 };
 use reqwest::header::HeaderMap;
 use tracing::info;
@@ -11,8 +12,6 @@ use tracing::info;
 struct Config {
     airstack_api_key: String,
     farcaster_id: i64,
-    /// TODO: Address type.
-    preferred_connected_wallet: String,
 }
 
 #[tokio::main]
@@ -25,24 +24,23 @@ async fn main() -> anyhow::Result<()> {
 
     let config: Config = envy::from_env()?;
 
-    info!(
-        "Hello, #{} ({})!",
-        config.farcaster_id, config.preferred_connected_wallet
-    );
+    info!("Hello, #{}!", config.farcaster_id);
 
-    let mut airstack_claims_headers = HeaderMap::new();
-    airstack_claims_headers.insert(
-        "x-airstack-claims",
-        config.airstack_api_key.parse().unwrap(),
-    );
+    let https_client = https_client(Default::default())?;
+    let airstack_claims_client = airstack_claims_client(&config.airstack_api_key)?;
 
-    let airstack_client = https_client(airstack_claims_headers)?;
+    let connected_addresses =
+        airstack_connected_addresses(&https_client, config.farcaster_id).await?;
+
+    info!("connected_wallets: {:#?}", connected_addresses.to_vec());
+
+    /*
 
     // check if the user has Moxie available to claim.
     // TODO: something is wrong cuz this response is just empty.
     let check_result = post_graphql::<check_user_everyday_rewards_amount::Query, _>(
-        &airstack_client,
-        AIRSTACK_CLAIMS_URL,
+        &airstack_claims_client,
+        check_user_everyday_rewards_amount::URL,
         check_user_everyday_rewards_amount::Variables {
             fid: config.farcaster_id,
         },
@@ -60,15 +58,18 @@ async fn main() -> anyhow::Result<()> {
         info!("No Moxie available to claim");
         return Ok(());
     }
+    */
 
     // TODO: check all the fan tokens that the user owns. we want to buy more fan tokens to keep the same ratios
 
+    // TODO: get connected_wallets from the subgraph
+
     let balances = post_graphql::<portfolio_tokens::Query, _>(
-        &airstack_client,
-        AIRSTACK_PROTOCOL_SUBGRAPH_URL,
+        &https_client,
+        portfolio_tokens::URL,
         portfolio_tokens::Variables {
             limit: 1000,
-            wallet_addresses: vec![config.preferred_connected_wallet.clone()],
+            wallet_addresses: connected_addresses.to_vec(),
             skip: None,
         },
     )
@@ -79,12 +80,25 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Balances: {:#?}", balances);
 
+    // TODO: fetch stats for all our tokens
+    let coopa_stats = post_graphql::<get_nota_stats::Query, _>(
+        &https_client,
+        get_nota_stats::URL,
+        get_nota_stats::Variables {
+            fid_or_channel_url: "206".to_string(),
+        },
+    )
+    .await?
+    .data
+    .context("no data")?;
+    info!("Coopa stats: {:#?}", coopa_stats);
+
     // let claim_result = post_graphql::<claim_everyday_rewards::Query, _>(
-    //     &airstack_client,
-    //     AIRSTACK_CLAIMS_URL,
+    //     &airstack_claims_client,
+    //     claim_everyday_rewards::URL,
     //     claim_everyday_rewards::Variables {
     //         fid: config.farcaster_id,
-    //         preferred_connected_wallet: config.preferred_connected_wallet,
+    //         preferred_connected_wallet: connected_addresses.beneficiary_address.clone(),
     //     },
     // )
     // .await?

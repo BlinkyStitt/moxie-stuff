@@ -1,0 +1,37 @@
+query GetNotaStats($fidOrChannelUrl: String!) {
+  GetNotaStats: GetUserNotaStatsV1(input: { entity: $fidOrChannelUrl }) {
+    today {
+      all
+      cast
+      perl
+      ogUser
+      frameDev
+      swapCreator
+      swapReferer
+      swap
+      totalSwap
+    }
+    weekly {
+      all
+      cast
+      perl
+      ogUser
+      frameDev
+      swapCreator
+      swapReferer
+      swap
+      totalSwap
+    }
+    lifeTime {
+      all
+      cast
+      perl
+      ogUser
+      frameDev
+      swapCreator
+      swapReferer
+      swap
+      totalSwap
+    }
+  }
+}

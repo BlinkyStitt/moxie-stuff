@@ -2,6 +2,7 @@
 use graphql_client::GraphQLQuery;
 
 pub const AIRSTACK_CLAIMS_URL: &str = "https://claims.airstack.xyz/moxie";
+pub const AIRSTACK_BFF_PROD_URL: &str = "https://bff-prod.airstack.xyz/graphql";
 pub const AIRSTACK_PROTOCOL_SUBGRAPH_URL: &str = "https://airstack.xyz/api/protocol-subgraph";
 
 /// From <https://developer.moxie.xyz/use-cases/everyday-rewards/check-users-everyday-rewards-amount>.
@@ -15,6 +16,8 @@ pub mod check_claim_transaction_status {
         response_derives = "Debug"
     )]
     pub struct FarcasterUserClaimTransactionDetails;
+
+    pub const URL: &str = AIRSTACK_CLAIMS_URL;
 
     /// prettier name for the FarcasterUserClaimTransactionDetails derived query object.
     pub type Query = FarcasterUserClaimTransactionDetails;
@@ -34,6 +37,8 @@ pub mod claim_everyday_rewards {
         response_derives = "Debug"
     )]
     pub struct FarcasterUserClaimMoxie;
+
+    pub const URL: &str = AIRSTACK_CLAIMS_URL;
 
     /// prettier name for the FarcasterUserClaimMoxie derived query object.
     pub type Query = FarcasterUserClaimMoxie;
@@ -55,11 +60,34 @@ pub mod check_user_everyday_rewards_amount {
     )]
     pub struct FarcasterUserClaimTransactionDetails;
 
+    pub const URL: &str = AIRSTACK_CLAIMS_URL;
+
     /// prettier name for the FarcasterUserClaimTransactionDetails derived query object
     pub type Query = FarcasterUserClaimTransactionDetails;
 
     /// prettier name for farcaster_user_claim_transaction_details::Variables.
     pub type Variables = farcaster_user_claim_transaction_details::Variables;
+}
+
+/// From <https://airstack.xyz/my-assets>.
+pub mod get_nota_stats {
+    use super::*;
+
+    #[derive(GraphQLQuery)]
+    #[graphql(
+        schema_path = "graphql/airstack-bff-prod/schema.json",
+        query_path = "graphql/airstack-bff-prod/get_nota_stats/query.graphql",
+        response_derives = "Debug"
+    )]
+    pub struct GetNotaStats;
+
+    pub const URL: &str = AIRSTACK_BFF_PROD_URL;
+
+    /// prettier name for the NotaStats derived query object
+    pub type Query = GetNotaStats;
+
+    /// prettier name for get_nota_stats::Variables.
+    pub type Variables = get_nota_stats::Variables;
 }
 
 /// From <https://airstack.xyz/my-assets>.
@@ -78,6 +106,8 @@ pub mod portfolio_tokens {
         response_derives = "Debug"
     )]
     pub struct PortfolioTokens;
+
+    pub const URL: &str = AIRSTACK_PROTOCOL_SUBGRAPH_URL;
 
     /// prettier name for the PortfolioTokens derived query object
     pub type Query = PortfolioTokens;
