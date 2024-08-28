@@ -2,9 +2,7 @@
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use tracing::info;
 
 use crate::neynar_client;
 
@@ -103,7 +101,8 @@ pub struct Embed {
 #[derive(Clone, Deserialize, Debug)]
 pub struct Button {
     pub action_type: String,
-    pub index: u64,
+    /// TODO: this should be nonzero!
+    pub index: usize,
     pub target: Option<String>,
     pub title: Option<String>,
     #[serde(flatten)]
@@ -270,7 +269,6 @@ impl FrameCrawler {
         Ok(x.cast)
     }
 
-    /// TODO: return a Frame object that's wrapped with this cast hash and crawler
     pub async fn open_frame(
         &self,
         cast_hash: &str,
@@ -295,10 +293,8 @@ impl FrameCrawler {
 }
 
 impl OpenFrame<'_> {
-    /// TODO: type to keep the frame and cast_hash together
     /// TODO: i think this might need to return an enum. Sometimes things are transactions are external links
-    /// TODO: helper that takes the title of the button instead of the index
-    pub async fn click_button(
+    pub async fn click_button_index(
         &self,
         button_index: NonZeroUsize,
         input: serde_json::Value,
@@ -372,6 +368,28 @@ impl OpenFrame<'_> {
 
         Ok(open_frame)
     }
+
+    pub async fn click_button(
+        &self,
+        button_title: Option<&str>,
+        input: serde_json::Value,
+    ) -> anyhow::Result<OpenFrame> {
+        let button = self
+            .frame
+            .buttons
+            .iter()
+            .find(|button| button.title.as_deref() == button_title)
+            .context("no button with that title")?;
+
+        let button_index = button.index;
+
+        self.click_button_index(NonZeroUsize::new(button_index).unwrap(), input)
+            .await
+    }
+
+    pub fn ocr(&self, left: i32, top: i32, width: i32, height: i32) -> anyhow::Result<String> {
+        todo!("read the frame image and OCR it")
+    }
 }
 
 mod test {
@@ -383,22 +401,23 @@ mod test {
 
         let cast_hash = "0x9f748161eca76edfa6363140b4ef9317386f8e3b";
 
-        let nn_signer_uuid = std::env::var("NEYNAR_SIGNER_UUID").unwrap();
-        let nn_api_key = std::env::var("NEYNAR_API_KEY").unwrap();
+        let neynar_signer_uuid = std::env::var("NEYNAR_SIGNER_UUID").unwrap();
+        let neynar_api_key = std::env::var("NEYNAR_API_KEY").unwrap();
 
-        let frame_crawler = FrameCrawler::new(nn_api_key, nn_signer_uuid).await.unwrap();
-
-        let page_0 = frame_crawler.open_frame(cast_hash, 0).await.unwrap();
-
-        assert_eq!(page_0.frame.title, Some("Yoink".to_string()));
-
-        let page_1 = page_0
-            .click_button(2.try_into().unwrap(), serde_json::Value::Null)
+        let frame_crawler = FrameCrawler::new(neynar_api_key, neynar_signer_uuid)
             .await
             .unwrap();
 
-        assert_eq!(page_1.frame.title, Some("Yoink!".to_string()));
+        let page_0 = frame_crawler.open_frame(cast_hash, 0).await.unwrap();
 
-        // TODO: more to assert?
+        assert_eq!(page_0.frame.title.as_deref(), Some("Yoink"));
+
+        let page_1 = page_0
+            .click_button(Some("🚩 Start"), serde_json::Value::Null)
+            .await
+            .unwrap();
+
+        assert_eq!(page_1.frame.title.as_deref(), Some("Yoink!"));
+        // TODO: assert more things
     }
 }

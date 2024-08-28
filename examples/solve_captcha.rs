@@ -1,4 +1,4 @@
-use moxie_stuff::solve_captcha;
+use moxie_stuff::{solve_captcha, CaptchaImage};
 
 fn main() {
     let captcha_path = "30_plus_5.jpg";
@@ -15,7 +15,14 @@ fn main() {
         println!("Failed to display image: {}", e);
     }
 
-    match solve_captcha(captcha_path, left, top, width, height) {
+    match solve_captcha(
+        &CaptchaImage::Filename(captcha_path),
+        Some("eng"),
+        left,
+        top,
+        width,
+        height,
+    ) {
         Ok(solution) => println!("CAPTCHA solution: {}", solution),
         Err(e) => eprintln!("Failed to solve CAPTCHA: {}", e),
     }

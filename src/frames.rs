@@ -27,14 +27,9 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     info!("open_frame: {:#?}", open_frame.frame);
 
     let open_frame = open_frame
-        .click_button(NonZeroUsize::new(2).unwrap(), serde_json::Value::Null)
+        .click_button_index(NonZeroUsize::new(2).unwrap(), serde_json::Value::Null)
         .await?;
     info!("open_frame check rewards: {:#?}", open_frame.frame);
-
-    let open_frame = open_frame
-        .click_button(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
-        .await?;
-    info!("open_frame view balance 1: {:#?}", open_frame.frame);
 
     if open_frame.frame.image
         != "https://moxie-frames.airstack.xyz/MoxieIntro/airdrop-already-claimed.png"
@@ -43,14 +38,35 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     }
 
     let open_frame = open_frame
-        .click_button(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
+        .click_button_index(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
         .await?;
-    info!("open_frame view balance 2: {:#?}", open_frame.frame);
+    info!("open_frame view balance 1: {:#?}", open_frame.frame);
 
-    let open_frame = open_frame
-        .click_button(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
-        .await?;
-    info!("open_frame view balance 3: {:#?}", open_frame.frame);
+    let left = 84;
+    let top = 433;
+    let width = 735;
+    let height = 142;
+
+    let text = open_frame.ocr(left, top, width, height);
+
+    let answer = solve_captcha(
+        &crate::CaptchaImage::Filename("30_plus_5.jpg"),
+        Some("eng"),
+        left,
+        top,
+        width,
+        height,
+    )?;
+
+    // let open_frame = open_frame
+    //     .click_button(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
+    //     .await?;
+    // info!("open_frame view balance 2: {:#?}", open_frame.frame);
+
+    // let open_frame = open_frame
+    //     .click_button(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
+    //     .await?;
+    // info!("open_frame view balance 3: {:#?}", open_frame.frame);
 
     // let fetch_captcha_payload = json!({
     //     "action": {
@@ -79,11 +95,6 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     // // TODO: option to send a message with the captcha image so the user can solve it themselves
     // info!("captcha_response: {:#?}", captcha_response);
     // // TODO: solve a captcha...? wtf guys...? i guess that scraps this
-
-    // let left = 84;
-    // let top = 433;
-    // let width = 735;
-    // let height = 142;
 
     // // TODO: turn the jpeg base64 into something that tesseract can read
     // let image_path = "30_plus_5.jpg";
