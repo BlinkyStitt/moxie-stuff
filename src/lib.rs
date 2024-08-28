@@ -1,11 +1,15 @@
+mod captcha;
+mod frame_crawler;
 mod frames;
 mod graphql;
 
+use reqwest::header::{HeaderMap, HeaderValue};
 use std::time::Duration;
 
+pub use captcha::*;
+pub use frame_crawler::*;
 pub use frames::*;
 pub use graphql::*;
-use reqwest::header::{HeaderMap, HeaderValue};
 
 /// The application name and version.
 pub static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -28,6 +32,15 @@ pub fn https_client(default_headers: HeaderMap<HeaderValue>) -> reqwest::Result<
 pub fn airstack_claims_client(api_key: &str) -> anyhow::Result<reqwest::Client> {
     let mut default_headers = HeaderMap::new();
     default_headers.insert("x-airstack-claims", api_key.parse()?);
+
+    let client = https_client(default_headers)?;
+
+    Ok(client)
+}
+
+pub fn neynar_client(api_key: &str) -> anyhow::Result<reqwest::Client> {
+    let mut default_headers = HeaderMap::new();
+    default_headers.insert("api_key", api_key.parse()?);
 
     let client = https_client(default_headers)?;
 
