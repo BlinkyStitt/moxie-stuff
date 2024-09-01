@@ -4,12 +4,9 @@ use anyhow::Context;
 use base64::prelude::{Engine, BASE64_STANDARD};
 use petgraph::{graph::NodeIndex, Graph};
 use serde::{Deserialize, Serialize};
-use std::{
-    collections::HashMap,
-    num::{NonZero, NonZeroUsize},
-    sync::Arc,
-};
+use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use tesseract::Tesseract;
+use tracing::{debug, info};
 
 use crate::neynar_client;
 
@@ -301,6 +298,8 @@ impl FrameCrawler {
             crawler: self,
         };
 
+        info!("opened frame: {:#?}", open_frame.frame);
+
         Ok(open_frame)
     }
 
@@ -405,11 +404,7 @@ impl OpenFrame<'_> {
         // TODO: support other types of actions
         anyhow::ensure!(button.action_type == "post", "button is not a post");
 
-        let input = if let Some(input_text) = input_text {
-            Some(InputObject { text: input_text })
-        } else {
-            None
-        };
+        let input = input_text.map(|input_text| InputObject { text: input_text });
 
         // TODO: not sure about input or state or post_url lol
         let payload = FramePayload {
@@ -456,6 +451,8 @@ impl OpenFrame<'_> {
             crawler: self.crawler,
         };
 
+        info!("opened with click: {:#?}", open_frame.frame);
+
         Ok(open_frame)
     }
 
@@ -469,12 +466,15 @@ impl OpenFrame<'_> {
             .buttons
             .iter()
             .find(|button| button.title.as_deref() == Some(button_title))
-            .context("no button with that title")?;
+            .context(format!("no button with the title '{}'", button_title))?;
 
         let button_index = button.index;
 
-        self.click_button_index(NonZeroUsize::new(button_index).unwrap(), input_text)
-            .await
+        let open_frame = self
+            .click_button_index(NonZeroUsize::new(button_index).unwrap(), input_text)
+            .await?;
+
+        Ok(open_frame)
     }
 
     pub async fn ocr(
