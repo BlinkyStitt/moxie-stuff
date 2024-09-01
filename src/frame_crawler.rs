@@ -4,7 +4,11 @@ use anyhow::Context;
 use base64::prelude::{Engine, BASE64_STANDARD};
 use petgraph::{graph::NodeIndex, Graph};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use std::{
+    collections::HashMap,
+    num::{NonZero, NonZeroUsize},
+    sync::Arc,
+};
 use tesseract::Tesseract;
 
 use crate::neynar_client;
@@ -336,10 +340,7 @@ impl OpenFrame<'_> {
         // TODO: spawn this so it can be done in parallel. need a lock on the map and graph then though
         for next_button in self.frame.buttons.iter() {
             let next_frame = self
-                .click_button_index(
-                    NonZeroUsize::new(next_button.index).unwrap(),
-                    serde_json::Value::Null,
-                )
+                .click_button_index(NonZeroUsize::new(next_button.index).unwrap(), None)
                 .await?;
 
             // box so that recursion works
@@ -354,7 +355,7 @@ impl OpenFrame<'_> {
     pub async fn click_button_index(
         &self,
         button_index: NonZeroUsize,
-        input: serde_json::Value,
+        input_text: Option<&str>,
     ) -> anyhow::Result<OpenFrame> {
         /// TODO: title,target,post_url of the button is part of the protobuf, but i don't think we need it
         #[derive(Debug, Serialize)]
@@ -366,13 +367,17 @@ impl OpenFrame<'_> {
             post_url: Option<&'a str>,
         }
 
+        #[derive(Debug, Serialize)]
+        struct InputObject<'a> {
+            text: &'a str,
+        }
+
         /// TODO: version,title,image
         /// TODO: better types for input,state,transaction
         #[derive(Debug, Serialize)]
         struct ActionObject<'a> {
             button: ButtonObject<'a>,
-            #[serde(skip_serializing_if = "serde_json::Value::is_null")]
-            input: serde_json::Value,
+            input: Option<InputObject<'a>>,
             #[serde(skip_serializing_if = "serde_json::Value::is_null")]
             state: serde_json::Value,
             #[serde(skip_serializing_if = "serde_json::Value::is_null")]
@@ -399,6 +404,12 @@ impl OpenFrame<'_> {
 
         // TODO: support other types of actions
         anyhow::ensure!(button.action_type == "post", "button is not a post");
+
+        let input = if let Some(input_text) = input_text {
+            Some(InputObject { text: input_text })
+        } else {
+            None
+        };
 
         // TODO: not sure about input or state or post_url lol
         let payload = FramePayload {
@@ -451,7 +462,7 @@ impl OpenFrame<'_> {
     pub async fn click_button(
         &self,
         button_title: &str,
-        input: serde_json::Value,
+        input_text: Option<&str>,
     ) -> anyhow::Result<OpenFrame> {
         let button = self
             .frame
@@ -462,7 +473,7 @@ impl OpenFrame<'_> {
 
         let button_index = button.index;
 
-        self.click_button_index(NonZeroUsize::new(button_index).unwrap(), input)
+        self.click_button_index(NonZeroUsize::new(button_index).unwrap(), input_text)
             .await
     }
 
@@ -541,10 +552,7 @@ mod test {
 
         assert_eq!(page_0.frame.title.as_deref(), Some("Yoink"));
 
-        let page_1 = page_0
-            .click_button("🚩 Start", serde_json::Value::Null)
-            .await
-            .unwrap();
+        let page_1 = page_0.click_button("🚩 Start", None).await.unwrap();
 
         assert_eq!(page_1.frame.title.as_deref(), Some("Yoink!"));
         // TODO: assert more things
