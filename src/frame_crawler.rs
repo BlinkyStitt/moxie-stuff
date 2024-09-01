@@ -381,6 +381,7 @@ impl OpenFrame<'_> {
         // TODO: support other types of actions
         anyhow::ensure!(button.action_type == "post", "button is not a post");
 
+        // TODO: not sure about input or state or post_url lol
         let payload = FramePayload {
             action: FrameAction {
                 post_url: button
