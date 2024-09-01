@@ -40,7 +40,17 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     let open_frame = open_frame
         .click_button("View Balance", serde_json::Value::Null)
         .await?;
-    info!("open_frame view balance 1: {:#?}", open_frame.frame);
+    info!("open_frame view balance: {:#?}", open_frame.frame);
+
+    let open_frame = open_frame
+        .click_button("Rewards", serde_json::Value::Null)
+        .await?;
+    info!("open_frame rewards: {:#?}", open_frame.frame);
+
+    let open_frame = open_frame
+        .click_button("Claim", serde_json::Value::Null)
+        .await?;
+    info!("open_frame claim: {:#?}", open_frame.frame);
 
     let left = 84;
     let top = 433;
@@ -54,6 +64,8 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     info!("CAPTCHA text: '{}'", text);
 
     let answer = solve_captcha_math(text)?;
+
+    info!("CAPTCHA answer: '{}'", answer);
 
     // let open_frame = open_frame
     //     .click_button(nz::usize!(1), serde_json::Value::Null)

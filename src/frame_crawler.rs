@@ -185,6 +185,7 @@ pub struct Root {
 }
 
 pub struct FrameCrawler {
+    address: String,
     neynar_client: reqwest::Client,
     neynar_signer_uuid: String,
 }
@@ -246,10 +247,15 @@ impl TryFrom<NeynarFrameActionResponse> for Frame {
 }
 
 impl FrameCrawler {
-    pub async fn new(neynar_api_key: String, neynar_signer_uuid: String) -> anyhow::Result<Self> {
+    pub async fn new(
+        address: String,
+        neynar_api_key: String,
+        neynar_signer_uuid: String,
+    ) -> anyhow::Result<Self> {
         let neynar_client = neynar_client(&neynar_api_key)?;
 
         let x = Self {
+            address,
             neynar_client,
             neynar_signer_uuid,
         };
@@ -343,39 +349,52 @@ impl OpenFrame<'_> {
         Ok(())
     }
 
+    /// [See](https://docs.neynar.com/reference/post-frame-action)
     /// TODO: i think this might need to return an enum. Sometimes things are transactions are external links
     pub async fn click_button_index(
         &self,
         button_index: NonZeroUsize,
         input: serde_json::Value,
     ) -> anyhow::Result<OpenFrame> {
+        /// TODO: title,target,post_url of the button is part of the protobuf, but i don't think we need it
         #[derive(Debug, Serialize)]
-        struct ButtonAction {
+        struct ButtonObject<'a> {
+            title: Option<&'a str>,
             index: usize,
+            action_type: &'a str,
+            target: Option<&'a str>,
+            post_url: Option<&'a str>,
+        }
+
+        /// TODO: version,title,image
+        /// TODO: better types for input,state,transaction
+        #[derive(Debug, Serialize)]
+        struct ActionObject<'a> {
+            button: ButtonObject<'a>,
             #[serde(skip_serializing_if = "serde_json::Value::is_null")]
             input: serde_json::Value,
             #[serde(skip_serializing_if = "serde_json::Value::is_null")]
             state: serde_json::Value,
-        }
-
-        #[derive(Debug, Serialize)]
-        struct FrameAction<'a> {
+            #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+            transaction: serde_json::Value,
+            // #[serde(skip_serializing_if = "serde_json::Value::is_null")]
+            address: Option<String>,
             frames_url: &'a str,
             post_url: &'a str,
-            button: ButtonAction,
         }
 
         #[derive(Debug, Serialize)]
         struct FramePayload<'a> {
-            action: FrameAction<'a>,
-            cast_hash: &'a str,
             signer_uuid: &'a str,
+            cast_hash: &'a str,
+            action: ActionObject<'a>,
         }
 
         let button = self
             .frame
             .buttons
-            .get(button_index.get() - 1)
+            .iter()
+            .find(|x| x.index == button_index.get())
             .context("no button with that index")?;
 
         // TODO: support other types of actions
@@ -383,17 +402,26 @@ impl OpenFrame<'_> {
 
         // TODO: not sure about input or state or post_url lol
         let payload = FramePayload {
-            action: FrameAction {
+            action: ActionObject {
+                /*
                 post_url: button
                     .target
                     .as_deref()
                     .unwrap_or(self.frame.post_url.as_str()),
+                */
+                post_url: self.frame.post_url.as_str(),
                 frames_url: &self.frame.frames_url,
-                button: ButtonAction {
+                button: ButtonObject {
+                    title: None,
                     index: button_index.get(),
-                    input,
-                    state: self.frame.state.clone(),
+                    action_type: &button.action_type,
+                    post_url: None,
+                    target: button.target.as_deref(),
                 },
+                input,
+                state: self.frame.state.clone(),
+                transaction: serde_json::Value::Null,
+                address: None,
             },
             cast_hash: &self.cast.hash,
             signer_uuid: &self.crawler.neynar_signer_uuid,
@@ -503,8 +531,9 @@ mod test {
 
         let neynar_signer_uuid = std::env::var("NEYNAR_SIGNER_UUID").unwrap();
         let neynar_api_key = std::env::var("NEYNAR_API_KEY").unwrap();
+        let address = "0x97906c211fa5f48d4377ddc1e2b5547e428b4c8e".to_string();
 
-        let frame_crawler = FrameCrawler::new(neynar_api_key, neynar_signer_uuid)
+        let frame_crawler = FrameCrawler::new(address, neynar_api_key, neynar_signer_uuid)
             .await
             .unwrap();
 

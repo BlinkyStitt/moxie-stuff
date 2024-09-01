@@ -26,11 +26,6 @@ async fn main() -> anyhow::Result<()> {
 
     info!("Hello, #{}!", config.farcaster_id);
 
-    let frame_crawler = FrameCrawler::new(config.neynar_api_key, config.neynar_signer_uuid).await?;
-
-    // TODO: make this optional. only claim if over a certain threshold.
-    claim_everyday_rewards_with_neynar(&frame_crawler).await?;
-
     let https_client = https_client(Default::default())?;
     let airstack_claims_client = airstack_claims_client(&config.airstack_api_key)?;
 
@@ -38,6 +33,16 @@ async fn main() -> anyhow::Result<()> {
         airstack_connected_addresses(&https_client, config.farcaster_id).await?;
 
     info!("connected_wallets: {:#?}", connected_addresses);
+
+    let frame_crawler = FrameCrawler::new(
+        connected_addresses.beneficiary_address.clone(),
+        config.neynar_api_key,
+        config.neynar_signer_uuid,
+    )
+    .await?;
+
+    // TODO: make this optional. only claim if over a certain threshold.
+    claim_everyday_rewards_with_neynar(&frame_crawler).await?;
 
     let balances = portfolio_tokens::send_request(
         &https_client,
