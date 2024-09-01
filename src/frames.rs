@@ -4,7 +4,7 @@ use serde_json::json;
 use tracing::info;
 use url::Url;
 
-use crate::{frame_crawler::FrameCrawler, solve_captcha};
+use crate::{frame_crawler::FrameCrawler, solve_captcha, solve_captcha_math};
 
 // TODO: FrameBrowser struct that has "set input" and "click button" methods. take a cast or a frame url as a starting point
 
@@ -27,7 +27,7 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     info!("open_frame: {:#?}", open_frame.frame);
 
     let open_frame = open_frame
-        .click_button_index(NonZeroUsize::new(2).unwrap(), serde_json::Value::Null)
+        .click_button("Check rewards", serde_json::Value::Null)
         .await?;
     info!("open_frame check rewards: {:#?}", open_frame.frame);
 
@@ -38,7 +38,7 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     }
 
     let open_frame = open_frame
-        .click_button_index(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
+        .click_button("View Balance", serde_json::Value::Null)
         .await?;
     info!("open_frame view balance 1: {:#?}", open_frame.frame);
 
@@ -47,24 +47,21 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     let width = 735;
     let height = 142;
 
-    let text = open_frame.ocr(left, top, width, height);
+    let text = open_frame
+        .ocr(left, top, width, height, Some("eng"), None)
+        .await?;
 
-    let answer = solve_captcha(
-        &crate::CaptchaImage::Filename("30_plus_5.jpg"),
-        Some("eng"),
-        left,
-        top,
-        width,
-        height,
-    )?;
+    info!("CAPTCHA text: '{}'", text);
+
+    let answer = solve_captcha_math(text)?;
 
     // let open_frame = open_frame
-    //     .click_button(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
+    //     .click_button(nz::usize!(1), serde_json::Value::Null)
     //     .await?;
     // info!("open_frame view balance 2: {:#?}", open_frame.frame);
 
     // let open_frame = open_frame
-    //     .click_button(NonZeroUsize::new(1).unwrap(), serde_json::Value::Null)
+    //     .click_button(nz::usize!(1).unwrap(), serde_json::Value::Null)
     //     .await?;
     // info!("open_frame view balance 3: {:#?}", open_frame.frame);
 

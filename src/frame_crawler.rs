@@ -1,8 +1,11 @@
 //! Use Neynar APIs to crawl a frame.
 
 use anyhow::Context;
+use base64::prelude::{Engine, BASE64_STANDARD};
+use petgraph::{graph::NodeIndex, Graph};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use tesseract::Tesseract;
 
 use crate::neynar_client;
 
@@ -290,9 +293,56 @@ impl FrameCrawler {
 
         Ok(open_frame)
     }
+
+    pub async fn crawl_frame<'a>(
+        &'a self,
+        cast_hash: &str,
+        frame_index: usize,
+    ) -> anyhow::Result<Graph<String, String>> {
+        let mut frames = HashMap::<NodeIndex, Frame>::new();
+
+        let mut graph = Graph::new();
+
+        let first = self.open_frame(cast_hash, frame_index).await?;
+
+        let first_frame = first.frame;
+
+        // TODO: what should the weight be? image? title? some combination? a render of the frame with buttons?
+
+        // TODO: recurse through the frames. pass &mut frames and &mut graph so it can add itself
+
+        Ok(graph)
+    }
 }
 
 impl OpenFrame<'_> {
+    pub async fn crawl(
+        &self,
+        frames: &mut HashMap<NodeIndex, Frame>,
+        graph: &mut Graph<String, String>,
+    ) -> anyhow::Result<()> {
+        // first we add self to the graph
+        let x = graph.add_node(self.frame.image.clone());
+
+        frames.insert(x, self.frame.clone());
+
+        // then we iterate over the buttons and call crawl on them
+        // TODO: spawn this so it can be done in parallel. need a lock on the map and graph then though
+        for next_button in self.frame.buttons.iter() {
+            let next_frame = self
+                .click_button_index(
+                    NonZeroUsize::new(next_button.index).unwrap(),
+                    serde_json::Value::Null,
+                )
+                .await?;
+
+            // box so that recursion works
+            Box::pin(next_frame.crawl(frames, graph)).await?;
+        }
+
+        Ok(())
+    }
+
     /// TODO: i think this might need to return an enum. Sometimes things are transactions are external links
     pub async fn click_button_index(
         &self,
@@ -371,14 +421,14 @@ impl OpenFrame<'_> {
 
     pub async fn click_button(
         &self,
-        button_title: Option<&str>,
+        button_title: &str,
         input: serde_json::Value,
     ) -> anyhow::Result<OpenFrame> {
         let button = self
             .frame
             .buttons
             .iter()
-            .find(|button| button.title.as_deref() == button_title)
+            .find(|button| button.title.as_deref() == Some(button_title))
             .context("no button with that title")?;
 
         let button_index = button.index;
@@ -387,8 +437,57 @@ impl OpenFrame<'_> {
             .await
     }
 
-    pub fn ocr(&self, left: i32, top: i32, width: i32, height: i32) -> anyhow::Result<String> {
-        todo!("read the frame image and OCR it")
+    pub async fn ocr(
+        &self,
+        left: i32,
+        top: i32,
+        width: i32,
+        height: i32,
+        language: Option<&str>,
+        whitelist: Option<&str>,
+    ) -> anyhow::Result<String> {
+        let mut tess = Tesseract::new(None, language)?;
+
+        tess = if self.frame.image.starts_with("http") {
+            let image_data = reqwest::get(self.frame.image.clone())
+                .await?
+                .error_for_status()?
+                .bytes()
+                .await?;
+
+            // TODO: display the image
+
+            // TODO: save the image to a temporary file and then let tess open it
+            tess.set_image_from_mem(image_data.as_ref())?
+        } else if self.frame.image.starts_with("data:") {
+            let image_data = self
+                .frame
+                .image
+                .split_once(',')
+                .map(|x| x.1)
+                .context("no image data")?;
+
+            // TODO: display the image
+
+            let image_data = BASE64_STANDARD.decode(image_data)?;
+
+            // TODO: i don't think this is right. i think we need an "image" crate here to decode the image. maybe we should just save to a file and let tess open it
+            tess.set_image_from_mem(&image_data)?
+        } else {
+            anyhow::bail!("image is not a URL or data");
+        };
+
+        if let Some(whitelist) = whitelist {
+            tess = tess.set_variable("tessedit_char_whitelist", whitelist)?;
+        }
+
+        tess = tess.set_rectangle(left, top, width, height);
+
+        tess = tess.recognize()?;
+
+        let text = tess.get_text()?;
+
+        Ok(text)
     }
 }
 
@@ -413,7 +512,7 @@ mod test {
         assert_eq!(page_0.frame.title.as_deref(), Some("Yoink"));
 
         let page_1 = page_0
-            .click_button(Some("🚩 Start"), serde_json::Value::Null)
+            .click_button("🚩 Start", serde_json::Value::Null)
             .await
             .unwrap();
 

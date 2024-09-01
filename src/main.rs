@@ -28,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
 
     let frame_crawler = FrameCrawler::new(config.neynar_api_key, config.neynar_signer_uuid).await?;
 
-    // TODO: use Neynar API to click the button in the frame so that you don't need to be on their allow list
+    // TODO: make this optional. only claim if over a certain threshold.
     claim_everyday_rewards_with_neynar(&frame_crawler).await?;
 
     let https_client = https_client(Default::default())?;

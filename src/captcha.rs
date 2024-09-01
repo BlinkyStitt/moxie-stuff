@@ -10,7 +10,7 @@ pub fn solve_captcha_math(mut text: String) -> anyhow::Result<i64> {
 
     let text = text.trim();
 
-    debug!("CAPTCHA text: '{}'", text);
+    debug!("Filtered CAPTCHA text: '{}'", text);
 
     let math =
         math_parse::MathParse::parse(text).map_err(|e| anyhow::anyhow!("math parse: {:?}", e))?;
@@ -35,13 +35,11 @@ pub fn solve_captcha(
     width: i32,
     height: i32,
 ) -> anyhow::Result<i64> {
-    let oem = tesseract::OcrEngineMode::TesseractOnly;
+    let mut tess = Tesseract::new(None, language)?;
 
-    let mut tess = match captcha_image {
-        CaptchaImage::Filename(image_path) => {
-            Tesseract::new_with_oem(Some(image_path), language, oem)?
-        }
-        CaptchaImage::Data(image_data) => Tesseract::new_with_data(image_data, language, oem)?,
+    tess = match captcha_image {
+        CaptchaImage::Filename(image_path) => tess.set_image(image_path)?,
+        CaptchaImage::Data(image_data) => tess.set_image_from_mem(image_data)?,
     };
 
     tess = tess.set_variable("tessedit_char_whitelist", "Whatis0123456789+-*/? ")?;
