@@ -6,7 +6,7 @@ use petgraph::{graph::NodeIndex, Graph};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
 use tesseract::Tesseract;
-use tracing::{debug, info};
+use tracing::{info, warn};
 
 use crate::neynar_client;
 
@@ -69,17 +69,18 @@ pub struct OgImage {
 }
 
 #[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Html {
     pub charset: String,
     pub favicon: Option<String>,
-    pub ogDescription: Option<String>,
-    pub ogImage: Vec<OgImage>,
-    pub ogLocale: Option<String>,
-    pub ogTitle: Option<String>,
-    pub twitterCard: Option<String>,
-    pub twitterDescription: Option<String>,
-    pub twitterImage: Option<Vec<OgImage>>,
-    pub twitterTitle: Option<String>,
+    pub og_description: Option<String>,
+    pub og_image: Vec<OgImage>,
+    pub og_locale: Option<String>,
+    pub og_title: Option<String>,
+    pub twitter_card: Option<String>,
+    pub twitter_description: Option<String>,
+    pub twitter_image: Option<Vec<OgImage>>,
+    pub twitter_title: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -102,13 +103,28 @@ pub struct Embed {
     pub extra: HashMap<String, serde_json::Value>,
 }
 
-#[derive(Clone, Deserialize, Debug)]
+#[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct Button {
     pub action_type: String,
     /// TODO: this should be nonzero!
     pub index: usize,
     pub target: Option<String>,
     pub title: Option<String>,
+    pub post_url: Option<String>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize)]
+pub struct Input {
+    pub text: Option<String>,
+    #[serde(flatten)]
+    pub extra: HashMap<String, serde_json::Value>,
+}
+
+#[derive(Clone, Deserialize, Debug, Serialize)]
+pub struct State {
+    pub serialized: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -118,9 +134,9 @@ pub struct Frame {
     pub buttons: Vec<Button>,
     pub frames_url: String,
     pub image: String,
-    pub input: serde_json::Value, // what type?
+    pub input: Option<Input>,
     pub post_url: String,
-    pub state: serde_json::Value, // what type?
+    pub state: Option<State>,
     pub title: Option<String>,
     pub version: String,
     pub image_aspect_ratio: Option<String>,
@@ -205,9 +221,9 @@ struct NeynarFrameActionResponse {
     image: Option<String>,
     buttons: Option<Vec<Button>>,
     /// TODO: what type?
-    input: serde_json::Value,
+    input: Option<Input>,
     /// TODO: what type?
-    state: serde_json::Value,
+    state: Option<State>,
     frames_url: String,
     post_url: String,
     image_aspect_ratio: Option<String>,
@@ -307,33 +323,29 @@ impl FrameCrawler {
         &'a self,
         cast_hash: &str,
         frame_index: usize,
-    ) -> anyhow::Result<Graph<String, String>> {
-        let mut frames = HashMap::<NodeIndex, Frame>::new();
-
+    ) -> anyhow::Result<(Arc<Cast>, Graph<Frame, String>)> {
         let mut graph = Graph::new();
 
         let first = self.open_frame(cast_hash, frame_index).await?;
 
-        let first_frame = first.frame;
+        let cast = first.cast.clone();
 
-        // TODO: what should the weight be? image? title? some combination? a render of the frame with buttons?
+        // TODO: add the cast to the graph. i think we need an enum then
 
-        // TODO: recurse through the frames. pass &mut frames and &mut graph so it can add itself
+        first.crawl(&mut graph).await?;
 
-        Ok(graph)
+        Ok((cast, graph))
     }
 }
 
 impl OpenFrame<'_> {
-    pub async fn crawl(
-        &self,
-        frames: &mut HashMap<NodeIndex, Frame>,
-        graph: &mut Graph<String, String>,
-    ) -> anyhow::Result<()> {
+    pub async fn crawl(&self, graph: &mut Graph<Frame, String>) -> anyhow::Result<NodeIndex> {
         // first we add self to the graph
-        let x = graph.add_node(self.frame.image.clone());
+        let a = graph.add_node(self.frame.clone());
 
-        frames.insert(x, self.frame.clone());
+        if self.frame.input.is_some() {
+            warn!(?self.frame.input, "The frame might require input!");
+        }
 
         // then we iterate over the buttons and call crawl on them
         // TODO: spawn this so it can be done in parallel. need a lock on the map and graph then though
@@ -343,10 +355,17 @@ impl OpenFrame<'_> {
                 .await?;
 
             // box so that recursion works
-            Box::pin(next_frame.crawl(frames, graph)).await?;
+            let b = Box::pin(next_frame.crawl(graph)).await?;
+
+            let edge_label = next_button
+                .title
+                .clone()
+                .unwrap_or_else(|| format!("Button #{}", next_button.index));
+
+            graph.add_edge(a, b, edge_label);
         }
 
-        Ok(())
+        Ok(a)
     }
 
     /// [See](https://docs.neynar.com/reference/post-frame-action)
@@ -356,32 +375,15 @@ impl OpenFrame<'_> {
         button_index: NonZeroUsize,
         input_text: Option<&str>,
     ) -> anyhow::Result<OpenFrame> {
-        /// TODO: title,target,post_url of the button is part of the protobuf, but i don't think we need it
-        #[derive(Debug, Serialize)]
-        struct ButtonObject<'a> {
-            title: Option<&'a str>,
-            index: usize,
-            action_type: &'a str,
-            target: Option<&'a str>,
-            post_url: Option<&'a str>,
-        }
-
-        #[derive(Debug, Serialize)]
-        struct InputObject<'a> {
-            text: &'a str,
-        }
-
         /// TODO: version,title,image
-        /// TODO: better types for input,state,transaction
+        /// TODO: better types for transaction
         #[derive(Debug, Serialize)]
         struct ActionObject<'a> {
-            button: ButtonObject<'a>,
-            input: Option<InputObject<'a>>,
-            #[serde(skip_serializing_if = "serde_json::Value::is_null")]
-            state: serde_json::Value,
+            button: Button,
+            input: Option<Input>,
+            state: Option<State>,
             #[serde(skip_serializing_if = "serde_json::Value::is_null")]
             transaction: serde_json::Value,
-            // #[serde(skip_serializing_if = "serde_json::Value::is_null")]
             address: Option<String>,
             frames_url: &'a str,
             post_url: &'a str,
@@ -404,30 +406,28 @@ impl OpenFrame<'_> {
         // TODO: support other types of actions
         anyhow::ensure!(button.action_type == "post", "button is not a post");
 
-        let input = input_text.map(|input_text| InputObject { text: input_text });
+        let input = input_text.map(|input_text| Input {
+            text: Some(input_text.to_string()),
+            extra: Default::default(),
+        });
 
         // TODO: not sure about input or state or post_url lol
         let payload = FramePayload {
             action: ActionObject {
-                /*
-                post_url: button
-                    .target
-                    .as_deref()
-                    .unwrap_or(self.frame.post_url.as_str()),
-                */
                 post_url: self.frame.post_url.as_str(),
                 frames_url: &self.frame.frames_url,
-                button: ButtonObject {
-                    title: None,
+                button: Button {
+                    title: button.title.clone(),
                     index: button_index.get(),
-                    action_type: &button.action_type,
+                    action_type: button.action_type.clone(),
                     post_url: None,
-                    target: button.target.as_deref(),
+                    target: button.target.clone(),
+                    extra: Default::default(),
                 },
                 input,
                 state: self.frame.state.clone(),
                 transaction: serde_json::Value::Null,
-                address: None,
+                address: Some(self.crawler.address.clone()),
             },
             cast_hash: &self.cast.hash,
             signer_uuid: &self.crawler.neynar_signer_uuid,

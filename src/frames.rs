@@ -1,25 +1,9 @@
-use std::{num::NonZeroUsize, time::Duration};
-
-use serde_json::json;
+use crate::{frame_crawler::FrameCrawler, solve_captcha_math};
+use std::time::Duration;
 use tokio::time::sleep;
 use tracing::info;
-use url::Url;
-
-use crate::{frame_crawler::FrameCrawler, solve_captcha, solve_captcha_math};
 
 // TODO: FrameBrowser struct that has "set input" and "click button" methods. take a cast or a frame url as a starting point
-
-#[allow(dead_code)]
-#[derive(Debug, serde::Deserialize)]
-struct Response {
-    version: Option<String>,
-    title: Option<String>,
-    image: Url,
-    // buttons: Vec<serde_json::Value>,
-    // input: serde_json::Value,
-    // state: serde_json::Value,
-    // frames_url: String,
-}
 
 pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyhow::Result<()> {
     let cast_hash = "0x97906c211fa5f48d4377ddc1e2b5547e428b4c8e";
@@ -62,9 +46,7 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
 
     sleep(Duration::from_secs(10)).await;
 
-    let open_frame = open_frame
-        .click_button("Check status", Some(&format!("{}", answer)))
-        .await?;
+    let open_frame = open_frame.click_button("Check status", None).await?;
 
     // TODO: check the claim status and error or loop
 

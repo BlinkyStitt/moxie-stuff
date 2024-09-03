@@ -1,14 +1,13 @@
 use anyhow::Context;
 use moxie_stuff::{
-    airstack_claims_client, airstack_connected_addresses, check_claim_transaction_status,
-    check_user_everyday_rewards_amount, claim_everyday_rewards, claim_everyday_rewards_with_neynar,
-    get_nota_stats, https_client, portfolio_tokens, FrameCrawler,
+    airstack_connected_addresses, claim_everyday_rewards_with_neynar, get_nota_stats, https_client,
+    portfolio_tokens, FrameCrawler,
 };
-use tracing::{error, info};
+use tracing::info;
 
 #[derive(serde::Deserialize)]
 struct Config {
-    airstack_api_key: String,
+    airstack_api_key: Option<String>,
     farcaster_id: i64,
     neynar_api_key: String,
     neynar_signer_uuid: String,
@@ -27,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
     info!("Hello, #{}!", config.farcaster_id);
 
     let https_client = https_client(Default::default())?;
-    let airstack_claims_client = airstack_claims_client(&config.airstack_api_key)?;
+    // let airstack_claims_client = airstack_claims_client(&config.airstack_api_key)?;
 
     let connected_addresses =
         airstack_connected_addresses(&https_client, config.farcaster_id).await?;
