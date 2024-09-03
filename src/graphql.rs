@@ -105,27 +105,29 @@ pub mod check_user_everyday_rewards_amount {
 }
 
 /// From <https://airstack.xyz/my-assets>.
-pub mod get_nota_stats {
+pub mod get_ftas_by_symbol {
     use super::*;
+
+    type Time = String;
 
     #[derive(GraphQLQuery)]
     #[graphql(
         schema_path = "graphql/airstack-bff-prod/schema.json",
-        query_path = "graphql/airstack-bff-prod/get_nota_stats/query.graphql",
+        query_path = "graphql/airstack-bff-prod/get_ftas_by_symbol/query.graphql",
         response_derives = "Debug"
     )]
-    pub struct GetNotaStats;
+    pub struct GetFtasBySymbol;
 
     pub const URL: &str = AIRSTACK_BFF_PROD_URL;
 
     /// prettier name for the NotaStats derived query object
-    pub type Query = GetNotaStats;
+    pub type Query = GetFtasBySymbol;
 
     /// prettier name for get_nota_stats::Variables.
-    pub type Variables = get_nota_stats::Variables;
+    pub type Variables = get_ftas_by_symbol::Variables;
 
     /// shorter name for the graphql response type.
-    pub type Response = graphql_client::Response<get_nota_stats::ResponseData>;
+    pub type Response = graphql_client::Response<get_ftas_by_symbol::ResponseData>;
 
     pub async fn send_request(
         client: &reqwest::Client,
@@ -146,7 +148,7 @@ pub mod portfolio_tokens {
 
     #[derive(GraphQLQuery)]
     #[graphql(
-        schema_path = "graphql/airstack-protocol-subgraph/portfolio_tokens/schema.json",
+        schema_path = "graphql/airstack-protocol-subgraph/schema.json",
         query_path = "graphql/airstack-protocol-subgraph/portfolio_tokens/query.graphql",
         response_derives = "Debug"
     )]

@@ -4,7 +4,7 @@ Scripts to manage your Moxie.
 
 ## Setup
 
-1. [Fill out a form](https://forms.gle/th7hKumcxz3X5txZ6) to have your airstack.xyz API key approved for claiming mox
+1. Get a [Neynar API Key](https://dev.neynar.com/).
 
 2. Read the docs
 
@@ -17,3 +17,17 @@ Scripts to manage your Moxie.
 4. Claim your everyday rewards and buy more fan tokens with them:
 
    cargo run --release
+
+## Development
+
+Download the latest graphql schemas:
+
+```shell
+graphql-client introspect-schema https://bff-prod.airstack.xyz/graphql > graphql/airstack-bff-prod/schema.json
+```
+
+```shell
+graphql-client introspect-schema https://airstack.xyz/api/protocol-subgraph > graphql/airstack-protocol-subgraph/schema.json
+```
+
+NOTE: The schemas for airstack-claims were built by hand and are probably wrong. They didn't grant me API access because this is a personal project.

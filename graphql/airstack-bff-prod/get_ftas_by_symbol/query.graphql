@@ -1,0 +1,27 @@
+query GetFtasBySymbol($entitySymbols: [String!]) {
+  GetFtas(
+    input: {
+      filter: { entity_symbol: $entitySymbols }
+      orderBy: { endTimestamp: DESC }
+    }
+  ) {
+    ftas {
+      entityId
+      entityType
+      entityImage
+      entitySymbol
+      initialSupply
+      earningsToday
+      followerCount
+      launchCastUrl
+      subjectAddress
+      startTimestamp
+      allTimeEarnings
+      earningsThisWeek
+      avgDailyEarnings
+      entityDisplayName
+      allTimeEarningRank
+      userFansSharePercentage
+    }
+  }
+}
