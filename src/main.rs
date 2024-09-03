@@ -157,40 +157,48 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    for (symbol, subject_token_data) in subject_tokens.iter_mut() {
-        // TODO: get all the stats in one query!
-        let ftas = get_ftas_by_symbol::send_request(
-            &https_client,
-            get_ftas_by_symbol::Variables {
-                entity_symbols: Some(vec![symbol.to_string()]),
-            },
-        )
-        .await?
-        .data;
+    let entity_symbols = subject_tokens
+        .keys()
+        .map(|x| x.to_string())
+        .collect::<Vec<_>>();
 
-        let ftas = ftas
-            .as_ref()
-            .context("no token data")?
-            .get_ftas
-            .ftas
-            .as_ref()
-            .context("no ftas")?
-            .first()
-            .context("no first fta")?
-            .as_ref()
-            .context("really no first fta")?;
+    let ftas = get_ftas_by_symbol::send_request(
+        &https_client,
+        get_ftas_by_symbol::Variables {
+            entity_symbols: Some(entity_symbols),
+        },
+    )
+    .await?
+    .data;
 
-        if let Some(display_name) = &ftas.entity_display_name {
+    let ftas = ftas
+        .as_ref()
+        .context("no token data")?
+        .get_ftas
+        .ftas
+        .as_ref()
+        .context("no ftas")?
+        .iter()
+        .filter_map(|x| x.as_ref())
+        .collect::<Vec<_>>();
+
+    // TODO: no need to zip. the fta has the symbol in it somewhere
+    for fta in ftas {
+        let symbol = fta.entity_symbol.as_deref().unwrap();
+
+        let subject_token_data = subject_tokens.get_mut(symbol).unwrap();
+
+        if let Some(display_name) = &fta.entity_display_name {
             subject_token_data.display_name = Some(display_name.to_string());
         }
 
-        if let Some(avg_daily_earnings) = ftas.avg_daily_earnings {
+        if let Some(avg_daily_earnings) = fta.avg_daily_earnings {
             let avg_daily_earnings = BigDecimal::from_f64(avg_daily_earnings)
                 .context("failed to parse avg_daily_earnings")?;
             subject_token_data.avg_daily_earnings = avg_daily_earnings;
         }
 
-        if let Some(earnings_this_week) = ftas.earnings_this_week {
+        if let Some(earnings_this_week) = fta.earnings_this_week {
             let earnings_this_week = BigDecimal::from_f64(earnings_this_week)
                 .context("failed to parse earnings_this_week")?;
             subject_token_data.earnings_this_week = earnings_this_week;
@@ -205,7 +213,7 @@ async fn main() -> anyhow::Result<()> {
                 .unwrap()
         );
 
-        info!("Fan Token {} stats: {:#?}", symbol, ftas);
+        info!("Fan Token {} stats: {:#?}", symbol, fta);
     }
 
     info!("subject_tokens: {:#?}", subject_tokens);
