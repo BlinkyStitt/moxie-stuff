@@ -30,8 +30,14 @@ struct SubjectTokenData<'a> {
 }
 
 impl SubjectTokenData<'_> {
+    fn apr(&self) -> BigDecimal {
+        self.avg_daily_rewards_per_moxie()
+            * BigDecimal::from_u64(365).unwrap()
+            * BigDecimal::from_u64(100).unwrap()
+    }
+
     fn avg_daily_rewards_per_moxie(&self) -> BigDecimal {
-        // TODO: &self.avg_daily_earnings / &self.tvl?
+        // TODO: &self.avg_daily_earnings / &self.tvl? or tvl/avg?
         &self.avg_daily_rewards_per_fan_token() / &self.current_price_in_moxie
     }
 
@@ -242,12 +248,11 @@ async fn main() -> anyhow::Result<()> {
 
     info!("top fan tokens: {:#?}", weights);
 
-    // TODO: check if we have any funds available to claim. i guess we have to read the moxie frame's response
+    // TODO: figure out how much moxie we have to spend. keep a slush fund of some USD value?
 
-    // // TODO: use Neynar API to click the button in the frame so that you don't need to be on their allow list
-    // claim_everyday_rewards_with_neynar(&frame_crawler).await?;
+    // TODO: sell some moxie for
 
-    // TODO: buy fan tokens with the loose moxie (subtract a configurable "slush fund" amount to leave some tokens for the user to spend manually)
+    // TODO: buy fan tokens
 
     Ok(())
 }
