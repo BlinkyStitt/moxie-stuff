@@ -213,7 +213,6 @@ pub struct OpenFrame<'a> {
     pub frame: Frame,
 }
 
-#[allow(dead_code)]
 #[derive(Debug, serde::Deserialize)]
 struct NeynarFrameActionResponse {
     version: Option<String>,
@@ -411,7 +410,7 @@ impl OpenFrame<'_> {
             extra: Default::default(),
         });
 
-        // TODO: not sure about input or state or post_url lol
+        // TODO: not sure about transaction
         let payload = FramePayload {
             action: ActionObject {
                 post_url: self.frame.post_url.as_str(),

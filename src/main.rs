@@ -12,7 +12,6 @@ use tracing::info;
 
 #[derive(serde::Deserialize)]
 struct Config {
-    airstack_api_key: Option<String>,
     farcaster_id: i64,
     neynar_api_key: String,
     neynar_signer_uuid: String,
@@ -43,6 +42,7 @@ impl SubjectTokenData<'_> {
 
     /// TODO: this feels wrong. i think we want to use TVL here instead?
     /// TODO: SEE: <https://mirror.xyz/siddxa.eth/wgGqLMmYzKhZtBVBPPNPyJaxNF_GIJAo2MwlFMV4Hvo>
+    /// TODO: need to include the `userFansSharePercentage` in the calculation
     fn avg_daily_rewards_per_fan_token(&self) -> BigDecimal {
         &self.avg_daily_earnings / &self.total_tokens()
     }
@@ -92,6 +92,7 @@ async fn main() -> anyhow::Result<()> {
 
     let config: Config = envy::from_env()?;
 
+    // TODO: get the farcaster id from the neynar api?
     info!("Hello, #{}!", config.farcaster_id);
 
     let https_client = https_client(Default::default())?;
