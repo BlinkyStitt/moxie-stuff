@@ -120,14 +120,14 @@ pub struct Button {
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct Input {
-    pub text: String,
+    pub text: Option<String>,
     // #[serde(flatten)]
     // pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct State {
-    pub serialized: String,
+    pub serialized: Option<String>,
     // #[serde(flatten)]
     // pub extra: HashMap<String, serde_json::Value>,
 }
@@ -436,7 +436,7 @@ impl OpenFrame<'_> {
         anyhow::ensure!(button.action_type == "post", "button is not a post");
 
         let input = input_text.map(|input_text| Input {
-            text: input_text.to_string(),
+            text: Some(input_text.to_string()),
             // extra: Default::default(),
         });
 
