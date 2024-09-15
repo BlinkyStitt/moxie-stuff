@@ -1,22 +1,36 @@
 use std::{collections::HashMap, str::FromStr};
 
+use alloy::{
+    network::EthereumWallet,
+    primitives::{address, Address, U256},
+    providers::{ext::AnvilApi, Provider, ProviderBuilder},
+    rpc::types::anvil::Forking,
+    signers::local::PrivateKeySigner,
+};
 use anyhow::Context;
 use bigdecimal::{BigDecimal, ToPrimitive};
+use chrono::Utc;
 use moxie_stuff::{
     airstack_connected_addresses, claim_everyday_rewards_with_neynar, get_ftas_by_symbol,
-    https_client, portfolio_tokens, FrameCrawler,
+    https_client, portfolio_tokens, FrameCrawler, IUniswapV2Router02, MoxieBondingCurve,
+    MoxieToken, USDC,
 };
 use num_bigint::BigInt;
 use num_traits::{FromPrimitive, Zero};
-use tracing::info;
+use tracing::{debug, info, warn};
+use url::Url;
 
 #[derive(serde::Deserialize)]
 struct Config {
+    base_rpc_url: Url,
+    base_address: Address,
+    base_private_key: String,
     farcaster_id: i64,
     neynar_api_key: String,
     neynar_signer_uuid: String,
 }
 
+/// TODO: builder pattern with bon for creating this?
 struct SubjectTokenData<'a> {
     symbol: &'a str,
     id: &'a str,
@@ -26,9 +40,11 @@ struct SubjectTokenData<'a> {
     balance_wei: BigDecimal,
     avg_daily_earnings: BigDecimal,
     earnings_this_week: BigDecimal,
+    user_fans_share_percentage: Option<BigDecimal>,
 }
 
 impl SubjectTokenData<'_> {
+    /// TODO: i think this apr calc is wrong
     fn apr(&self) -> BigDecimal {
         self.avg_daily_rewards_per_moxie()
             * BigDecimal::from_u64(365).unwrap()
@@ -38,6 +54,16 @@ impl SubjectTokenData<'_> {
     fn avg_daily_rewards_per_moxie(&self) -> BigDecimal {
         // TODO: &self.avg_daily_earnings / &self.tvl? or tvl/avg?
         &self.avg_daily_rewards_per_fan_token() / &self.current_price_in_moxie
+    }
+
+    fn avg_fan_daily_rewards_per_moxie(&self) -> BigDecimal {
+        let mut x = self.avg_daily_rewards_per_moxie();
+
+        if let Some(user_fans_share_percentage) = &self.user_fans_share_percentage {
+            x *= user_fans_share_percentage / BigDecimal::from_u64(100).unwrap();
+        }
+
+        x
     }
 
     /// TODO: this feels wrong. i think we want to use TVL here instead?
@@ -78,13 +104,21 @@ impl std::fmt::Debug for SubjectTokenData<'_> {
                 "avg_daily_rewards_per_fan_token",
                 &self.avg_daily_rewards_per_fan_token().to_f32(),
             )
+            .field(
+                "user_fans_share_percentage",
+                &self.user_fans_share_percentage.as_ref().map(|x| x.to_f32()),
+            )
+            .field(
+                "avg_fan_daily_rewards_per_moxie",
+                &self.avg_fan_daily_rewards_per_moxie().to_f32(),
+            )
             .finish()
     }
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    dotenvy::dotenv().unwrap();
+    dotenvy::dotenv().context(".env is required for setting credentials")?;
 
     let subscriber = tracing_subscriber::fmt().pretty().finish();
     // TODO: tokio-console subscriber, too
@@ -103,8 +137,49 @@ async fn main() -> anyhow::Result<()> {
 
     info!("connected_wallets: {:#?}", connected_addresses);
 
+    let signer: PrivateKeySigner = config.base_private_key.parse()?;
+
+    anyhow::ensure!(
+        signer.address() == config.base_address,
+        "wallet address does not match config"
+    );
+
+    let wallet = EthereumWallet::from(signer);
+
+    info!("Wallet: {:#?}", wallet);
+
+    let base_provider = ProviderBuilder::new()
+        .with_recommended_fillers()
+        .wallet(wallet)
+        // .with_chain(NamedChain::Base)
+        .on_http(config.base_rpc_url);
+
+    let latest_block = base_provider.get_block_number().await?;
+
+    // Print the block number.
+    info!("Latest block number: {latest_block}");
+
+    let moxie_bonding_curve = MoxieBondingCurve::new(
+        address!("02bDb83bE769351771dCdd30b51c141b0Bd5FF41"),
+        base_provider.clone(),
+    );
+
+    let moxie_token_address = moxie_bonding_curve.token().call().await?._0;
+
+    let moxie_token = MoxieToken::new(moxie_token_address, base_provider.clone());
+
+    let usdc = USDC::new(
+        address!("833589fcd6edb6e08f4c7c32d4f71b54bda02913"),
+        base_provider.clone(),
+    );
+
+    let uniswap_v2_router = IUniswapV2Router02::new(
+        address!("4752ba5dbc23f44d87826276bf6fd6b1c372ad24"),
+        base_provider.clone(),
+    );
+
     let frame_crawler = FrameCrawler::new(
-        connected_addresses.beneficiary_address.clone(),
+        connected_addresses.beneficiary_address,
         config.neynar_api_key,
         config.neynar_signer_uuid,
     )
@@ -112,7 +187,116 @@ async fn main() -> anyhow::Result<()> {
 
     // TODO: make this optional. only claim if over a certain threshold.
     // TODO: better error types so that we can skip if we get an "already claimed"/"no claim button" error
-    // claim_everyday_rewards_with_neynar(&frame_crawler).await?;
+    match claim_everyday_rewards_with_neynar(&frame_crawler).await {
+        Ok(_) => {
+            // we claimed. sell half
+
+            // // TODO: think more about this reset
+            // base_provider
+            //     .anvil_reset(Some(Forking {
+            //         json_rpc_url: None,
+            //         block_number: None,
+            //     }))
+            //     .await?;
+
+            let moxie_balance_wei = moxie_token
+                .balanceOf(connected_addresses.beneficiary_address)
+                .call()
+                .await?
+                ._0;
+
+            info!("moxie_balance_wei: {}", moxie_balance_wei);
+
+            // TODO: save this amount in a database so that we can resume if we error
+            let sell_moxie_wei = moxie_balance_wei / U256::from(2);
+
+            info!("sell_moxie_wei: {}", sell_moxie_wei);
+
+            let path = vec![*moxie_token.address(), *usdc.address()];
+
+            // TODO: move this sell logic into a helper function that compares multiple exchanges
+            // TODO: use https://swap.defillama.com/ to find the best price
+            let amounts_out = uniswap_v2_router
+                .getAmountsOut(sell_moxie_wei, path.clone())
+                .call()
+                .await?
+                .amounts;
+
+            let amount_out = amounts_out.last().unwrap();
+
+            // TODO: apply slippage to amount_out
+
+            let min_amount_out_wei = amount_out * U256::from(995) / U256::from(1000);
+
+            // TODO: look up decimals from the chain
+            // TODO: helper for pretty printing
+            info!(
+                "min_amount_out USDC: {}",
+                BigDecimal::from_u64(min_amount_out_wei.to::<u64>()).unwrap()
+                    / BigDecimal::from_f64(1e6).unwrap()
+            );
+
+            // TODO: skip sell if min_amount_out is too small
+
+            let allowance = moxie_token
+                .allowance(
+                    connected_addresses.beneficiary_address,
+                    *uniswap_v2_router.address(),
+                )
+                .call()
+                .await?
+                ._0;
+
+            if allowance < sell_moxie_wei {
+                let approve_hash = moxie_token
+                    .approve(*uniswap_v2_router.address(), U256::MAX)
+                    .send()
+                    .await?
+                    .watch()
+                    .await?;
+
+                info!("approve hash: {}", approve_hash);
+
+                let approve_transaction = base_provider
+                    .get_transaction_by_hash(approve_hash)
+                    .await?
+                    .context("approve transaction not found")?;
+
+                info!("approve transaction: {:#?}", approve_transaction);
+            }
+
+            // i think its best to get this from the system and not from the chain. but think about this more
+            let now = Utc::now().timestamp();
+
+            // deadline = now + 5 minutes
+            let deadline = U256::from(now + 5 * 60);
+
+            // TODO: send profits to a different address?
+            let to = connected_addresses.beneficiary_address;
+
+            let swap_hash = uniswap_v2_router
+                .swapExactTokensForTokens(sell_moxie_wei, min_amount_out_wei, path, to, deadline)
+                .send()
+                .await?
+                .watch()
+                .await?;
+
+            info!("swap hash: {}", swap_hash);
+
+            let swap_transaction = base_provider
+                .get_transaction_by_hash(swap_hash)
+                .await?
+                .context("swap transaction not found")?;
+
+            info!("swap transaction: {:#?}", swap_transaction);
+        }
+        Err(err) => {
+            warn!(
+                "claim_everyday_rewards_with_neynar failed. this might be okay: {:#?}",
+                err
+            );
+        }
+    }
 
     let balances = portfolio_tokens::send_request(
         &https_client,
@@ -127,7 +311,7 @@ async fn main() -> anyhow::Result<()> {
     .context("no data")?
     .users;
 
-    info!("Balances: {:#?}", balances);
+    debug!("Balances: {:#?}", balances);
 
     let mut subject_tokens = HashMap::<&str, SubjectTokenData>::new();
 
@@ -155,6 +339,7 @@ async fn main() -> anyhow::Result<()> {
                             portfolio.subject_token.total_supply.as_str(),
                         )
                         .unwrap(),
+                        user_fans_share_percentage: None,
                     });
 
             let no_of_tokens = BigInt::from_str(portfolio.no_of_tokens.as_str())
@@ -178,6 +363,7 @@ async fn main() -> anyhow::Result<()> {
     .await?
     .data;
 
+    // TODO: the name on ftas' type is awful
     let ftas = ftas
         .as_ref()
         .context("no token data")?
@@ -189,7 +375,6 @@ async fn main() -> anyhow::Result<()> {
         .filter_map(|x| x.as_ref())
         .collect::<Vec<_>>();
 
-    // TODO: no need to zip. the fta has the symbol in it somewhere
     for fta in ftas {
         let symbol = fta.entity_symbol.as_deref().unwrap();
 
@@ -211,49 +396,82 @@ async fn main() -> anyhow::Result<()> {
             subject_token_data.earnings_this_week = earnings_this_week;
         }
 
-        // TODO: also include the fan token amount in the calculation. some tokens give 20%. others give 100%.
-        info!(
-            "weekly_rewards_per_moxie: {}",
-            subject_token_data
-                .avg_daily_rewards_per_moxie()
-                .to_f64()
-                .unwrap()
-        );
+        if let Some(user_fans_share_percentage) = fta.user_fans_share_percentage {
+            let user_fans_share_percentage = BigDecimal::from_f64(user_fans_share_percentage)
+                .context("failed to parse user_fans_share_percentage")
+                .unwrap();
 
-        info!("Fan Token {} stats: {:#?}", symbol, fta);
+            subject_token_data.user_fans_share_percentage = Some(user_fans_share_percentage);
+        } else {
+            subject_token_data.user_fans_share_percentage =
+                Some(BigDecimal::from_u64(100).unwrap());
+        }
+
+        // debug!(
+        //     "avg_fan_daily_rewards_per_moxie: {}",
+        //     subject_token_data
+        //         .avg_fan_daily_rewards_per_moxie()
+        //         .to_f32()
+        //         .unwrap()
+        // );
+
+        // debug!("Fan Token {} stats: {:#?}", symbol, fta);
     }
 
+    // TODO: print the subject tokens in order of `avg_fan_daily_rewards_per_moxie`
     info!("subject_tokens: {:#?}", subject_tokens);
 
+    // TODO: include price impact of buying the fan tokens. do moxie spent * avg_fan_daily_rewards, or do we need to do fan tokens?
     let mut rankings = subject_tokens
         .iter()
         .map(|(symbol, subject_token_data)| {
-            (symbol, subject_token_data.avg_daily_rewards_per_moxie())
+            (
+                *symbol,
+                subject_token_data
+                    .avg_fan_daily_rewards_per_moxie()
+                    .to_f32()
+                    .unwrap(),
+            )
         })
         .filter(|(_, weekly_rewards_per_moxie)| !weekly_rewards_per_moxie.is_zero())
         .collect::<Vec<_>>();
 
-    rankings.sort_by(|a, b| b.1.cmp(&a.1));
+    // TODO: sorting f32s...
+    rankings.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+    info!("rankings: {:#?}", rankings);
 
     // TODO: how many tokens should we pick?
     // TODO: force certain users into the rankings
     // TODO: always buy some percentage of our token
-    rankings.truncate((subject_tokens.len() / 4).max(2));
+    rankings.truncate((subject_tokens.len() / 4).max(3));
 
-    let rankings_sum = rankings.iter().map(|(_, x)| x).sum::<BigDecimal>();
+    // TODO: i don't think weights should be linear. raise it to a power?
+    let rankings_sum = rankings.iter().map(|(_, x)| x).sum::<f32>();
 
+    // TODO: do we want weights here? might be better to show the raw numbers so we can calculate earnings from our current balance
     let weights = rankings
         .into_iter()
-        .map(|(symbol, x)| (symbol, (x / &rankings_sum).to_f32().unwrap()))
+        .map(|(symbol, x)| (symbol, x / rankings_sum))
         .collect::<Vec<_>>();
 
-    info!("top fan tokens: {:#?}", weights);
+    info!("top fan tokens by weight: {:#?}", weights);
 
-    // TODO: figure out how much moxie we have to spend. keep a slush fund of some USD value?
+    let moxie_balance_wei = moxie_token
+        .balanceOf(connected_addresses.beneficiary_address)
+        .call()
+        .await?
+        ._0;
 
-    // TODO: sell some moxie for
+    info!("moxie_balance_wei: {}", moxie_balance_wei);
 
-    // TODO: buy fan tokens
+    todo!("buy fan tokens");
+
+    // TODO: sell some moxie for USDC. split the trade between uniswap and aerodrome, or just pick the current best? first pass just use uniswap
+    // TODO: mark that we sold some moxie today. that way if we error after this, we don't accidentally sell more on the next run
+
+    // TODO: buy fan tokens according to the weights with the remaining
+    // TODO: how do we calculate the price impact? we want to spend 100% of the moxie remaining
 
     Ok(())
 }

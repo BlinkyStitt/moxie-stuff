@@ -6,14 +6,15 @@ use tracing::info;
 // TODO: FrameBrowser struct that has "set input" and "click button" methods. take a cast or a frame url as a starting point
 
 pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyhow::Result<()> {
+    // TODO: maybe do 0xc73804e7a4d84a9c75a10e27388e6d4af028227d instead? its less clicks, but it doesn't do the nft check
     let cast_hash = "0x97906c211fa5f48d4377ddc1e2b5547e428b4c8e";
 
     let open_frame = crawler.open_frame(cast_hash, 0).await?;
 
     let open_frame = open_frame.click_button("Check rewards", None).await?;
 
-    if open_frame.frame.image
-        != "https://moxie-frames.airstack.xyz/MoxieIntro/airdrop-already-claimed.png"
+    if open_frame.frame.image.as_deref()
+        != Some("https://moxie-frames.airstack.xyz/MoxieIntro/airdrop-already-claimed.png")
     {
         anyhow::bail!("claim the initial airdrop");
     }
@@ -44,8 +45,9 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
         .click_button("Submit & Claim", Some(&format!("{}", answer)))
         .await?;
 
-    sleep(Duration::from_secs(10)).await;
+    sleep(Duration::from_secs(15)).await;
 
+    // TODO: what are the buttons? one time there wasn't a "Check status" button
     let open_frame = open_frame.click_button("Check status", None).await?;
 
     // TODO: check the claim status and error or loop

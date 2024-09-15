@@ -2,7 +2,9 @@ mod captcha;
 mod frame_crawler;
 mod frames;
 mod graphql;
+mod interfaces;
 
+use alloy::primitives::Address;
 use reqwest::header::{HeaderMap, HeaderValue};
 use std::time::Duration;
 
@@ -10,6 +12,7 @@ pub use captcha::*;
 pub use frame_crawler::*;
 pub use frames::*;
 pub use graphql::*;
+pub use interfaces::*;
 
 /// The application name and version.
 pub static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CARGO_PKG_VERSION"),);
@@ -18,6 +21,7 @@ pub static APP_USER_AGENT: &str = concat!(env!("CARGO_PKG_NAME"), "/", env!("CAR
 pub fn https_client(default_headers: HeaderMap<HeaderValue>) -> reqwest::Result<reqwest::Client> {
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(50))
         .http2_keep_alive_interval(Duration::from_secs(50))
         .http2_keep_alive_timeout(Duration::from_secs(60))
         .https_only(true)
@@ -50,17 +54,17 @@ pub fn neynar_client(api_key: &str) -> anyhow::Result<reqwest::Client> {
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AirstackConnectedAddresses {
-    pub beneficiary_address: String,
-    pub vesting_contract_address: String,
-    pub custody_address: String,
+    pub beneficiary_address: Address,
+    pub vesting_contract_address: Address,
+    pub custody_address: Address,
 }
 
 impl AirstackConnectedAddresses {
     pub fn to_vec(&self) -> Vec<String> {
         vec![
-            self.beneficiary_address.clone(),
-            self.vesting_contract_address.clone(),
-            self.custody_address.clone(),
+            self.beneficiary_address.to_string(),
+            self.vesting_contract_address.to_string(),
+            self.custody_address.to_string(),
         ]
     }
 }

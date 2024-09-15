@@ -1,12 +1,14 @@
 //! Use Neynar APIs to crawl a frame.
 
+use alloy::primitives::Address;
 use anyhow::Context;
 use base64::prelude::{Engine, BASE64_STANDARD};
 use petgraph::{graph::NodeIndex, Graph};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
+use terrors::OneOf;
 use tesseract::Tesseract;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use crate::neynar_client;
 
@@ -26,7 +28,8 @@ pub struct Bio {
 
 #[derive(Deserialize, Debug)]
 pub struct VerifiedAddresses {
-    pub eth_addresses: Vec<String>,
+    pub eth_addresses: Vec<Address>,
+    /// TODO: what type on this? its not an ETH address. its longer (and base58)
     pub sol_addresses: Vec<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -117,28 +120,28 @@ pub struct Button {
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct Input {
-    pub text: Option<String>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    pub text: String,
+    // #[serde(flatten)]
+    // pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Deserialize, Debug, Serialize)]
 pub struct State {
-    pub serialized: Option<String>,
-    #[serde(flatten)]
-    pub extra: HashMap<String, serde_json::Value>,
+    pub serialized: String,
+    // #[serde(flatten)]
+    // pub extra: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Deserialize, Debug)]
 pub struct Frame {
     pub buttons: Vec<Button>,
-    pub frames_url: String,
-    pub image: String,
+    pub frames_url: Option<String>,
+    pub image: Option<String>,
     pub input: Option<Input>,
-    pub post_url: String,
+    pub post_url: Option<String>,
     pub state: Option<State>,
     pub title: Option<String>,
-    pub version: String,
+    pub version: Option<String>,
     pub image_aspect_ratio: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
@@ -202,7 +205,7 @@ pub struct Root {
 }
 
 pub struct FrameCrawler {
-    address: String,
+    address: Address,
     neynar_client: reqwest::Client,
     neynar_signer_uuid: String,
 }
@@ -223,9 +226,12 @@ struct NeynarFrameActionResponse {
     input: Option<Input>,
     /// TODO: what type?
     state: Option<State>,
-    frames_url: String,
-    post_url: String,
+    frames_url: Option<String>,
+    post_url: Option<String>,
     image_aspect_ratio: Option<String>,
+    /// an error message
+    /// TODO: if this is set, throw an error
+    message: Option<String>,
     #[serde(flatten)]
     pub extra: HashMap<String, serde_json::Value>,
 }
@@ -234,13 +240,15 @@ impl TryFrom<NeynarFrameActionResponse> for Frame {
     type Error = anyhow::Error;
 
     fn try_from(response: NeynarFrameActionResponse) -> anyhow::Result<Self> {
+        debug!("NeynarFrameActionResponse: {:#?}", response);
+
         let frames_url = response.frames_url;
-        let image = response.image.context("image")?;
+        let image = response.image;
         let input = response.input;
         let post_url = response.post_url;
         let state = response.state;
         let title = response.title;
-        let version = response.version.context("version")?;
+        let version = response.version;
         let buttons = response.buttons.context("buttons")?;
         let image_aspect_ratio = response.image_aspect_ratio;
         let extra = response.extra;
@@ -264,7 +272,7 @@ impl TryFrom<NeynarFrameActionResponse> for Frame {
 
 impl FrameCrawler {
     pub async fn new(
-        address: String,
+        address: Address,
         neynar_api_key: String,
         neynar_signer_uuid: String,
     ) -> anyhow::Result<Self> {
@@ -280,26 +288,48 @@ impl FrameCrawler {
     }
 
     /// TODO: return a Cast, not a Value
-    pub async fn get_cast_by_hash(&self, cast_hash: &str) -> reqwest::Result<Cast> {
-        let x: CastResponse = self
+    pub async fn get_cast_by_hash(
+        &self,
+        cast_hash: &str,
+    ) -> Result<
+        Cast,
+        OneOf<(
+            reqwest::Error,
+            serde_path_to_error::Error<serde_json::Error>,
+        )>,
+    > {
+        let j = self
             .neynar_client
             .get("https://api.neynar.com/v2/farcaster/cast")
             .query(&[("identifier", cast_hash), ("type", "hash")])
             .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?;
+            .await
+            .map_err(OneOf::new)?
+            .error_for_status()
+            .map_err(OneOf::new)?
+            .text()
+            .await
+            .map_err(OneOf::new)?;
 
-        Ok(x.cast)
+        let jd = &mut serde_json::Deserializer::from_str(&j);
+
+        let cast_result: Result<CastResponse, _> = serde_path_to_error::deserialize(jd);
+
+        let cast_response = cast_result.map_err(OneOf::new)?;
+
+        Ok(cast_response.cast)
     }
 
+    /// TODO: terrors instead of anyhow
     pub async fn open_frame(
         &self,
         cast_hash: &str,
         frame_index: usize,
     ) -> anyhow::Result<OpenFrame> {
-        let cast = self.get_cast_by_hash(cast_hash).await?;
+        let cast = self
+            .get_cast_by_hash(cast_hash)
+            .await
+            .map_err(|e| anyhow::anyhow!("{:#?}", e))?;
 
         let frame = cast
             .frames
@@ -383,7 +413,7 @@ impl OpenFrame<'_> {
             state: Option<State>,
             #[serde(skip_serializing_if = "serde_json::Value::is_null")]
             transaction: serde_json::Value,
-            address: Option<String>,
+            address: Option<Address>,
             frames_url: &'a str,
             post_url: &'a str,
         }
@@ -406,15 +436,15 @@ impl OpenFrame<'_> {
         anyhow::ensure!(button.action_type == "post", "button is not a post");
 
         let input = input_text.map(|input_text| Input {
-            text: Some(input_text.to_string()),
-            extra: Default::default(),
+            text: input_text.to_string(),
+            // extra: Default::default(),
         });
 
         // TODO: not sure about transaction
         let payload = FramePayload {
             action: ActionObject {
-                post_url: self.frame.post_url.as_str(),
-                frames_url: &self.frame.frames_url,
+                post_url: self.frame.post_url.as_deref().unwrap(),
+                frames_url: self.frame.frames_url.as_deref().unwrap(),
                 button: Button {
                     title: button.title.clone(),
                     index: button_index.get(),
@@ -426,7 +456,7 @@ impl OpenFrame<'_> {
                 input,
                 state: self.frame.state.clone(),
                 transaction: serde_json::Value::Null,
-                address: Some(self.crawler.address.clone()),
+                address: Some(self.crawler.address),
             },
             cast_hash: &self.cast.hash,
             signer_uuid: &self.crawler.neynar_signer_uuid,
@@ -469,6 +499,8 @@ impl OpenFrame<'_> {
 
         let button_index = button.index;
 
+        // TODO: short, random sleep here?
+
         let open_frame = self
             .click_button_index(NonZeroUsize::new(button_index).unwrap(), input_text)
             .await?;
@@ -487,8 +519,10 @@ impl OpenFrame<'_> {
     ) -> anyhow::Result<String> {
         let mut tess = Tesseract::new(None, language)?;
 
-        tess = if self.frame.image.starts_with("http") {
-            let image_data = reqwest::get(self.frame.image.clone())
+        let image = self.frame.image.as_deref().context("no image")?;
+
+        tess = if image.starts_with("http") {
+            let image_data = reqwest::get(image)
                 .await?
                 .error_for_status()?
                 .bytes()
@@ -498,10 +532,8 @@ impl OpenFrame<'_> {
 
             // TODO: save the image to a temporary file and then let tess open it
             tess.set_image_from_mem(image_data.as_ref())?
-        } else if self.frame.image.starts_with("data:") {
-            let image_data = self
-                .frame
-                .image
+        } else if image.starts_with("data:") {
+            let image_data = image
                 .split_once(',')
                 .map(|x| x.1)
                 .context("no image data")?;
@@ -531,17 +563,29 @@ impl OpenFrame<'_> {
 }
 
 mod test {
+    // TODO: why are these showing as unused?
     use super::*;
+    use alloy::primitives::address;
+    use tracing::Level;
 
     #[tokio::test]
     async fn test_crawl_yoink() {
-        dotenvy::dotenv().unwrap();
+        dotenvy::dotenv().expect(".env file is needed for credentials");
+
+        // TODO: log init should be in a test helper. turn on DEBUG
+        tracing_subscriber::fmt()
+            .pretty()
+            .with_max_level(Level::DEBUG)
+            .init();
 
         let cast_hash = "0x9f748161eca76edfa6363140b4ef9317386f8e3b";
 
         let neynar_signer_uuid = std::env::var("NEYNAR_SIGNER_UUID").unwrap();
         let neynar_api_key = std::env::var("NEYNAR_API_KEY").unwrap();
-        let address = "0x97906c211fa5f48d4377ddc1e2b5547e428b4c8e".to_string();
+
+        // TODO: wait. who is this address? and why does my signer work for it? address should come from .env
+        // TODO: this is rish's address but my signer. this should fail!
+        let address = address!("e1fac64cebe0855d984ac7c3feb8b7612c6b4176");
 
         let frame_crawler = FrameCrawler::new(address, neynar_api_key, neynar_signer_uuid)
             .await
@@ -554,6 +598,10 @@ mod test {
         let page_1 = page_0.click_button("🚩 Start", None).await.unwrap();
 
         assert_eq!(page_1.frame.title.as_deref(), Some("Yoink!"));
-        // TODO: assert more things
+        // // TODO: assert more things
+
+        // // "Yoink!" button only works if address matches. you'll get unauthorized here otherwise.
+        // // TODO: the response code is 200 though. need better errors. need to have neynar send the http code smarter
+        // let page_2 = page_1.click_button("Yoink!", None).await.unwrap();
     }
 }
