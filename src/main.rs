@@ -3,13 +3,12 @@ use std::{collections::HashMap, str::FromStr};
 use alloy::{
     network::EthereumWallet,
     primitives::{address, Address, U256},
-    providers::{ext::AnvilApi, Provider, ProviderBuilder},
-    rpc::types::anvil::Forking,
+    providers::{Provider, ProviderBuilder},
     signers::local::PrivateKeySigner,
 };
-use anyhow::Context;
 use bigdecimal::{BigDecimal, ToPrimitive};
 use chrono::Utc;
+use eyre::{Context, ContextCompat};
 use moxie_stuff::{
     airstack_connected_addresses, claim_everyday_rewards_with_neynar, get_ftas_by_symbol,
     https_client, portfolio_tokens, FrameCrawler, IUniswapV2Router02, MoxieBondingCurve,
@@ -117,8 +116,8 @@ impl std::fmt::Debug for SubjectTokenData<'_> {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    dotenvy::dotenv().context(".env is required for setting credentials")?;
+async fn main() -> eyre::Result<()> {
+    dotenvy::dotenv().wrap_err(".env is required for setting credentials")?;
 
     let subscriber = tracing_subscriber::fmt().pretty().finish();
     // TODO: tokio-console subscriber, too
@@ -139,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
 
     let signer: PrivateKeySigner = config.base_private_key.parse()?;
 
-    anyhow::ensure!(
+    eyre::ensure!(
         signer.address() == config.base_address,
         "wallet address does not match config"
     );
@@ -260,7 +259,7 @@ async fn main() -> anyhow::Result<()> {
                 let approve_transaction = base_provider
                     .get_transaction_by_hash(approve_hash)
                     .await?
-                    .context("approve transaction not found")?;
+                    .wrap_err("approve transaction not found")?;
 
                 info!("approve transaction: {:#?}", approve_transaction);
             }

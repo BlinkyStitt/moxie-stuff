@@ -1,11 +1,12 @@
 use crate::{frame_crawler::FrameCrawler, solve_captcha_math};
+use eyre::eyre;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing::info;
 
 // TODO: FrameBrowser struct that has "set input" and "click button" methods. take a cast or a frame url as a starting point
 
-pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyhow::Result<()> {
+pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> eyre::Result<()> {
     // TODO: maybe do 0xc73804e7a4d84a9c75a10e27388e6d4af028227d instead? its less clicks, but it doesn't do the nft check
     let cast_hash = "0x97906c211fa5f48d4377ddc1e2b5547e428b4c8e";
 
@@ -16,7 +17,7 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
     if open_frame.frame.image.as_deref()
         != Some("https://moxie-frames.airstack.xyz/MoxieIntro/airdrop-already-claimed.png")
     {
-        anyhow::bail!("claim the initial airdrop");
+        todo!("claim the initial airdrop");
     }
 
     let open_frame = open_frame.click_button("View Balance", None).await?;
@@ -37,12 +38,12 @@ pub async fn claim_everyday_rewards_with_neynar(crawler: &FrameCrawler) -> anyho
 
     info!("CAPTCHA text: '{}'", text);
 
-    let answer = solve_captcha_math(text)?;
+    let answer = solve_captcha_math(text).map_err(|e| eyre!("Unable to solve math: {e}"))?;
 
     info!("CAPTCHA answer: '{}'", answer);
 
     let open_frame = open_frame
-        .click_button("Submit & Claim", Some(&format!("{}", answer)))
+        .click_button("Submit & Claim", Some(&answer.to_string()))
         .await?;
 
     sleep(Duration::from_secs(15)).await;

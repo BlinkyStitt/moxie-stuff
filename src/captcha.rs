@@ -1,3 +1,5 @@
+use eyre::eyre;
+use math_parse::MathParseErrors;
 use tesseract::Tesseract;
 use tracing::debug;
 
@@ -5,19 +7,16 @@ fn filter_numbers_and_symbols(input: &mut String) {
     input.retain(|c| c.is_numeric() || "+-*/=".contains(c));
 }
 
-pub fn solve_captcha_math(mut text: String) -> anyhow::Result<i64> {
+pub fn solve_captcha_math(mut text: String) -> Result<i64, MathParseErrors> {
     filter_numbers_and_symbols(&mut text);
 
     let text = text.trim();
 
     debug!("Filtered CAPTCHA text: '{}'", text);
 
-    let math =
-        math_parse::MathParse::parse(text).map_err(|e| anyhow::anyhow!("math parse: {:?}", e))?;
+    let math = math_parse::MathParse::parse(text)?;
 
-    let answer = math
-        .solve_int(None)
-        .map_err(|e| anyhow::anyhow!("solve int: {:?}", e))?;
+    let answer = math.solve_int(None)?;
 
     Ok(answer)
 }
@@ -34,7 +33,7 @@ pub fn solve_captcha(
     top: i32,
     width: i32,
     height: i32,
-) -> anyhow::Result<i64> {
+) -> eyre::Result<i64> {
     let mut tess = Tesseract::new(None, language)?;
 
     tess = match captcha_image {
@@ -42,6 +41,7 @@ pub fn solve_captcha(
         CaptchaImage::Data(image_data) => tess.set_image_from_mem(image_data)?,
     };
 
+    // TODO: allow custom char whitelist
     tess = tess.set_variable("tessedit_char_whitelist", "Whatis0123456789+-*/? ")?;
     tess = tess.set_rectangle(left, top, width, height);
 
@@ -49,7 +49,7 @@ pub fn solve_captcha(
 
     let text = tess.get_text()?;
 
-    let answer = solve_captcha_math(text)?;
+    let answer = solve_captcha_math(text).map_err(|e| eyre!("solving captcha math: {e:?}"))?;
 
     Ok(answer)
 }

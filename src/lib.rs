@@ -33,7 +33,7 @@ pub fn https_client(default_headers: HeaderMap<HeaderValue>) -> reqwest::Result<
 }
 
 /// Using this requires an [approved API key](https://forms.gle/th7hKumcxz3X5txZ6).
-pub fn airstack_claims_client(api_key: &str) -> anyhow::Result<reqwest::Client> {
+pub fn airstack_claims_client(api_key: &str) -> eyre::Result<reqwest::Client> {
     let mut default_headers = HeaderMap::new();
     default_headers.insert("x-airstack-claims", api_key.parse()?);
 
@@ -42,7 +42,7 @@ pub fn airstack_claims_client(api_key: &str) -> anyhow::Result<reqwest::Client> 
     Ok(client)
 }
 
-pub fn neynar_client(api_key: &str) -> anyhow::Result<reqwest::Client> {
+pub fn neynar_client(api_key: &str) -> eyre::Result<reqwest::Client> {
     let mut default_headers = HeaderMap::new();
     default_headers.insert("api_key", api_key.parse()?);
 
@@ -85,7 +85,7 @@ pub struct AirstackConnectedAddressesResponse {
 pub async fn airstack_connected_addresses(
     client: &reqwest::Client,
     fid: i64,
-) -> anyhow::Result<AirstackConnectedAddresses> {
+) -> eyre::Result<AirstackConnectedAddresses> {
     let request = AirstackConnectedAddressesRequest {
         fid: fid.to_string(),
     };

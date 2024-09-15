@@ -1,16 +1,35 @@
 //! Use Neynar APIs to crawl a frame.
 
 use alloy::primitives::Address;
-use anyhow::Context;
 use base64::prelude::{Engine, BASE64_STANDARD};
 use petgraph::{graph::NodeIndex, Graph};
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, num::NonZeroUsize, sync::Arc};
-use terrors::OneOf;
 use tesseract::Tesseract;
+use thiserror::Error;
 use tracing::{debug, info, warn};
 
 use crate::neynar_client;
+
+/// Custom errors from Neynar
+#[derive(Debug, Error)]
+pub enum NeynarError {
+    #[error("Neynar request error: {0}")]
+    Reqwest(reqwest::Error),
+    #[error("Neynar response contains error: {0}")]
+    Message(String),
+    #[error("No frame with index {0}")]
+    NoFrame(usize),
+    /// Generic error. This is unexpected
+    #[error("Invalid frame")]
+    InvalidFrame,
+    #[error("No button with index {0}")]
+    NoButtonIndex(usize),
+    #[error("No button with title {0}")]
+    NoButtonTitle(String),
+    #[error("Unsupported button type: {0}")]
+    UnsupportedButtonType(String),
+}
 
 #[derive(Deserialize, Debug)]
 pub struct Profile {
@@ -237,10 +256,14 @@ struct NeynarFrameActionResponse {
 }
 
 impl TryFrom<NeynarFrameActionResponse> for Frame {
-    type Error = anyhow::Error;
+    type Error = NeynarError;
 
-    fn try_from(response: NeynarFrameActionResponse) -> anyhow::Result<Self> {
+    fn try_from(response: NeynarFrameActionResponse) -> Result<Self, Self::Error> {
         debug!("NeynarFrameActionResponse: {:#?}", response);
+
+        if let Some(message) = response.message {
+            return Err(NeynarError::Message(message));
+        }
 
         let frames_url = response.frames_url;
         let image = response.image;
@@ -249,7 +272,7 @@ impl TryFrom<NeynarFrameActionResponse> for Frame {
         let state = response.state;
         let title = response.title;
         let version = response.version;
-        let buttons = response.buttons.context("buttons")?;
+        let buttons = response.buttons.ok_or_else(|| NeynarError::InvalidFrame)?;
         let image_aspect_ratio = response.image_aspect_ratio;
         let extra = response.extra;
 
@@ -275,7 +298,7 @@ impl FrameCrawler {
         address: Address,
         neynar_api_key: String,
         neynar_signer_uuid: String,
-    ) -> anyhow::Result<Self> {
+    ) -> eyre::Result<Self> {
         let neynar_client = neynar_client(&neynar_api_key)?;
 
         let x = Self {
@@ -288,53 +311,34 @@ impl FrameCrawler {
     }
 
     /// TODO: return a Cast, not a Value
-    pub async fn get_cast_by_hash(
-        &self,
-        cast_hash: &str,
-    ) -> Result<
-        Cast,
-        OneOf<(
-            reqwest::Error,
-            serde_path_to_error::Error<serde_json::Error>,
-        )>,
-    > {
+    pub async fn get_cast_by_hash(&self, cast_hash: &str) -> eyre::Result<Cast> {
         let j = self
             .neynar_client
             .get("https://api.neynar.com/v2/farcaster/cast")
             .query(&[("identifier", cast_hash), ("type", "hash")])
             .send()
-            .await
-            .map_err(OneOf::new)?
-            .error_for_status()
-            .map_err(OneOf::new)?
+            .await?
+            .error_for_status()?
             .text()
-            .await
-            .map_err(OneOf::new)?;
+            .await?;
 
         let jd = &mut serde_json::Deserializer::from_str(&j);
 
         let cast_result: Result<CastResponse, _> = serde_path_to_error::deserialize(jd);
 
-        let cast_response = cast_result.map_err(OneOf::new)?;
+        let cast_response = cast_result?;
 
         Ok(cast_response.cast)
     }
 
     /// TODO: terrors instead of anyhow
-    pub async fn open_frame(
-        &self,
-        cast_hash: &str,
-        frame_index: usize,
-    ) -> anyhow::Result<OpenFrame> {
-        let cast = self
-            .get_cast_by_hash(cast_hash)
-            .await
-            .map_err(|e| anyhow::anyhow!("{:#?}", e))?;
+    pub async fn open_frame(&self, cast_hash: &str, frame_index: usize) -> eyre::Result<OpenFrame> {
+        let cast = self.get_cast_by_hash(cast_hash).await?;
 
         let frame = cast
             .frames
             .get(frame_index)
-            .context("no frame with that index")?
+            .ok_or_else(|| NeynarError::NoFrame(frame_index))?
             .clone();
 
         let open_frame = OpenFrame {
@@ -352,7 +356,7 @@ impl FrameCrawler {
         &'a self,
         cast_hash: &str,
         frame_index: usize,
-    ) -> anyhow::Result<(Arc<Cast>, Graph<Frame, String>)> {
+    ) -> eyre::Result<(Arc<Cast>, Graph<Frame, String>)> {
         let mut graph = Graph::new();
 
         let first = self.open_frame(cast_hash, frame_index).await?;
@@ -368,7 +372,7 @@ impl FrameCrawler {
 }
 
 impl OpenFrame<'_> {
-    pub async fn crawl(&self, graph: &mut Graph<Frame, String>) -> anyhow::Result<NodeIndex> {
+    pub async fn crawl(&self, graph: &mut Graph<Frame, String>) -> eyre::Result<NodeIndex> {
         // first we add self to the graph
         let a = graph.add_node(self.frame.clone());
 
@@ -389,7 +393,7 @@ impl OpenFrame<'_> {
             let edge_label = next_button
                 .title
                 .clone()
-                .unwrap_or_else(|| format!("Button #{}", next_button.index));
+                .ok_or_else(|| NeynarError::InvalidFrame)?;
 
             graph.add_edge(a, b, edge_label);
         }
@@ -403,7 +407,7 @@ impl OpenFrame<'_> {
         &self,
         button_index: NonZeroUsize,
         input_text: Option<&str>,
-    ) -> anyhow::Result<OpenFrame> {
+    ) -> eyre::Result<OpenFrame> {
         /// TODO: version,title,image
         /// TODO: better types for transaction
         #[derive(Debug, Serialize)]
@@ -430,10 +434,12 @@ impl OpenFrame<'_> {
             .buttons
             .iter()
             .find(|x| x.index == button_index.get())
-            .context("no button with that index")?;
+            .ok_or_else(|| NeynarError::NoButtonIndex(button_index.get()))?;
 
         // TODO: support other types of actions
-        anyhow::ensure!(button.action_type == "post", "button is not a post");
+        if button.action_type != "post" {
+            return Err(NeynarError::UnsupportedButtonType(button.action_type.clone()).into());
+        }
 
         let input = input_text.map(|input_text| Input {
             text: Some(input_text.to_string()),
@@ -468,9 +474,14 @@ impl OpenFrame<'_> {
             .post("https://api.neynar.com/v2/farcaster/frame/action")
             .json(&payload)
             .send()
+            .await?
+            .text()
             .await?;
 
-        let response = response.json::<NeynarFrameActionResponse>().await?;
+        let ds = &mut serde_json::Deserializer::from_str(&response);
+
+        // TODO: this error should probably have something about the action attached to it
+        let response: NeynarFrameActionResponse = serde_path_to_error::deserialize(ds)?;
 
         let frame = Frame::try_from(response)?;
 
@@ -489,13 +500,13 @@ impl OpenFrame<'_> {
         &self,
         button_title: &str,
         input_text: Option<&str>,
-    ) -> anyhow::Result<OpenFrame> {
+    ) -> eyre::Result<OpenFrame> {
         let button = self
             .frame
             .buttons
             .iter()
             .find(|button| button.title.as_deref() == Some(button_title))
-            .context(format!("no button with the title '{}'", button_title))?;
+            .ok_or_else(|| NeynarError::NoButtonTitle(button_title.to_string()))?;
 
         let button_index = button.index;
 
@@ -516,12 +527,18 @@ impl OpenFrame<'_> {
         height: i32,
         language: Option<&str>,
         whitelist: Option<&str>,
-    ) -> anyhow::Result<String> {
+    ) -> eyre::Result<String> {
         let mut tess = Tesseract::new(None, language)?;
 
-        let image = self.frame.image.as_deref().context("no image")?;
+        // TODO: should be an "invalid frame" error
+        let image = self
+            .frame
+            .image
+            .as_deref()
+            .ok_or_else(|| NeynarError::InvalidFrame)?;
 
         tess = if image.starts_with("http") {
+            // TODO: i think if use "and_then" we can avoid the multiple map_err?
             let image_data = reqwest::get(image)
                 .await?
                 .error_for_status()?
@@ -536,7 +553,7 @@ impl OpenFrame<'_> {
             let image_data = image
                 .split_once(',')
                 .map(|x| x.1)
-                .context("no image data")?;
+                .ok_or_else(|| NeynarError::InvalidFrame)?;
 
             // TODO: display the image
 
@@ -545,7 +562,7 @@ impl OpenFrame<'_> {
             // TODO: i don't think this is right. i think we need an "image" crate here to decode the image. maybe we should just save to a file and let tess open it
             tess.set_image_from_mem(&image_data)?
         } else {
-            anyhow::bail!("image is not a URL or data");
+            return Err(NeynarError::InvalidFrame.into());
         };
 
         if let Some(whitelist) = whitelist {
@@ -554,7 +571,8 @@ impl OpenFrame<'_> {
 
         tess = tess.set_rectangle(left, top, width, height);
 
-        tess = tess.recognize()?;
+        // TODO: i couldn't figure out how to access the error onthis. the docs say they don't think it will error
+        tess = tess.recognize().unwrap();
 
         let text = tess.get_text()?;
 
