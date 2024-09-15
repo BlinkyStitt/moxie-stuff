@@ -8,8 +8,8 @@ edition = "2021"
 reqwest = "0.11.27"
 url = { version = "2.5.2", features = ["serde"] }
 
-alloy = { version = "0.3.2", features = ["provider-anvil-api", "full", "node-bindings"] }
-anyhow = "1.0.87"
+alloy = { version = "0.3.5", features = ["provider-anvil-api", "full", "node-bindings"] }
+anyhow = "1.0.89"
 base64 = "0.22.1"
 bigdecimal = { version = "0.4.5", features = ["serde"] }
 dotenvy = "0.15.7"
