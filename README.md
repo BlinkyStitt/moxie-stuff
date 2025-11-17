@@ -2,6 +2,8 @@
 
 Scripts to manage your Moxie.
 
+Both Moxie and Frames v1 are gone. So this project isn't very useful.
+
 ## Setup
 
 1. Get a [Neynar API Key](https://dev.neynar.com/).

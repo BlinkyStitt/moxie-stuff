@@ -12,11 +12,11 @@ use eyre::{Context, ContextCompat};
 use moxie_stuff::{
     airstack_connected_addresses, claim_everyday_rewards_with_neynar, get_ftas_by_symbol,
     https_client, portfolio_tokens, FrameCrawler, IUniswapV2Router02, MoxieBondingCurve,
-    MoxieToken, USDC,
+    MoxieToken, NeynarError, USDC,
 };
 use num_bigint::BigInt;
 use num_traits::{FromPrimitive, Zero};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use url::Url;
 
 #[derive(serde::Deserialize)]
@@ -289,12 +289,17 @@ async fn main() -> eyre::Result<()> {
 
             info!("swap transaction: {:#?}", swap_transaction);
         }
-        Err(err) => {
-            warn!(
-                "claim_everyday_rewards_with_neynar failed. this might be okay: {:#?}",
-                err
-            );
-        }
+        Err(err) => match err.downcast_ref::<NeynarError>() {
+            Some(NeynarError::NoButtonTitle(title)) => {
+                if title == "Submit & Claim" {
+                    info!("already claimed today");
+                } else {
+                    return Err(err);
+                }
+            }
+            Some(_) => return Err(err),
+            None => return Err(err),
+        },
     }
 
     let balances = portfolio_tokens::send_request(
